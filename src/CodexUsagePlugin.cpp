@@ -594,6 +594,15 @@ struct UsageSnapshot {
     std::wstring tooltip = L"Codex 用量：等待采集";
 };
 
+std::wstring BuildTooltip(const UsageSnapshot& snapshot)
+{
+    return
+        FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display) +
+        FormatTooltipLine(L"周剩余额度", snapshot.weekly_display) +
+        FormatTooltipLine(L"重置", snapshot.reset_display) +
+        FormatTooltipLine(L"今日 Token", snapshot.today_tokens_display);
+}
+
 class CodexUsagePlugin;
 
 class CodexUsageItem final : public IPluginItem {
@@ -1147,7 +1156,7 @@ private:
             UsageSnapshot waiting;
             waiting.message = FileExists(CollectorScriptPath()) ? L"正在生成 Codex 用量快照" : L"未找到采集脚本或状态 JSON";
             waiting.reset_display = L"采集中";
-            waiting.tooltip = waiting.message + L"\r\n状态文件: " + path;
+            waiting.tooltip = BuildTooltip(waiting);
             snapshot_ = waiting;
             return;
         }
@@ -1170,19 +1179,7 @@ private:
         if (auto value = RemainingPercentFromJson(json, "weekly_remaining_percent", "weekly_used_percent"))
             next.weekly_graph = static_cast<float>(std::max(0.0, std::min(1.0, *value / 100.0)));
 
-        next.tooltip =
-            FormatTooltipLine(L"状态", next.status) +
-            FormatTooltipLine(L"说明", next.message) +
-            FormatTooltipLine(L"计划", next.plan_type) +
-            FormatTooltipLine(L"5 小时剩余额度", next.five_hour_display) +
-            FormatTooltipLine(L"周剩余额度", next.weekly_display) +
-            FormatTooltipLine(L"重置", next.reset_display) +
-            FormatTooltipLine(L"今日 Token", next.today_tokens_display) +
-            FormatTooltipLine(L"Token 来源", next.token_source) +
-            FormatTooltipLine(L"额度来源", next.rate_source) +
-            FormatTooltipLine(L"刷新时间间隔", std::to_wstring(refresh_interval_seconds_) + L" 秒") +
-            FormatTooltipLine(L"生成时间", next.generated_at_local) +
-            L"状态文件: " + path;
+        next.tooltip = BuildTooltip(next);
 
         snapshot_ = next;
     }

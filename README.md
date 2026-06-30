@@ -1,6 +1,6 @@
 # TrafficMonitor Codex Usage Plugin
 
-用于在 TrafficMonitor 中显示 Codex 的 5 小时额度和周额度；重置时间、今日 Token 用量放在鼠标悬停提示框中。
+用于在 TrafficMonitor 中显示 Codex 的 5 小时额度和周额度；重置时间放在鼠标悬停提示框中。
 
 实现参考了 TrafficMonitor 官方插件开发指南和官方插件示例：插件 DLL 导出 `TMPluginGetInstance`，主程序周期性调用 `DataRequired()`，显示项通过 `IPluginItem` 返回文本。
 
@@ -8,7 +8,7 @@
 
 - `5h`: Codex 300 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
 - `周`: Codex 10080 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
-鼠标移动到 TrafficMonitor 上时，提示框只显示 5 小时/周剩余额度、重置时间和今日 Token 估算值。
+鼠标移动到 TrafficMonitor 上时，提示框只显示 5 小时/周剩余额度和重置时间。
 
 双击任一显示项，或在插件命令里选择“立即刷新 Codex 用量”，会触发一次后台采集。
 
@@ -32,7 +32,7 @@
 
 额度优先来自 session JSONL 中 `event_msg` / `token_count` 携带的 `rate_limits`；如果新格式不可用，再回退到日志中的 `codex.rate_limits` websocket 事件。`primary.window_minutes=300` 作为 5 小时额度，`secondary.window_minutes=10080` 作为周额度。若本地 payload 只提供 `used_percent`，采集脚本会换算出剩余百分比；快照中会同时保留 used 和 remaining 两种数值。
 
-今日 Token 优先来自日志里的 `post sampling token usage total_usage_tokens=...`；当天日志不可用时，回退到 `threads.tokens_used` 的当天线程汇总，所以它是估算值。
+采集 JSON 中为兼容旧版本仍可能保留本机 Token 估算字段，但插件界面不再显示该估算值。
 
 脚本不会读取 `auth.json`，也不会发起网络请求。
 
@@ -81,7 +81,7 @@ scripts\update_codex_usage.ps1
 scripts\collect_codex_usage.py
 ```
 
-重启 TrafficMonitor 后，在显示项目设置中启用 `Codex 5 小时额度`、`Codex 周额度`。重置时间和今日 Token 不再作为任务栏显示项提供，只显示在鼠标悬停提示框里。
+重启 TrafficMonitor 后，在显示项目设置中启用 `Codex 5 小时额度`、`Codex 周额度`。重置时间不作为任务栏显示项提供，只显示在鼠标悬停提示框里。
 
 ## 手动采集
 

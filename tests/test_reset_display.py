@@ -30,7 +30,7 @@ class ResetDisplayTest(unittest.TestCase):
 
         self.assertEqual(result, "旧: 5h 06-23 19:05 / 周 06-25 09:12")
 
-    def test_reset_and_today_tokens_are_tooltip_only_not_taskbar_items(self):
+    def test_reset_is_tooltip_only_and_today_tokens_are_hidden(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("std::array<CodexUsageItem, 2> items_", source)
@@ -38,18 +38,19 @@ class ResetDisplayTest(unittest.TestCase):
         self.assertNotIn("CodexTodayTokens", source)
         self.assertNotIn("Codex 重置时间", source)
         self.assertNotIn("Codex 今日 Token", source)
+        self.assertNotIn("今日 Token", source)
         self.assertIn("BuildTooltip(next)", source)
         self.assertIn('FormatTooltipLine(L"重置", snapshot.reset_display)', source)
-        self.assertIn('FormatTooltipLine(L"今日 Token", snapshot.today_tokens_display)', source)
 
-    def test_tooltip_only_contains_quota_reset_and_today_tokens(self):
+    def test_tooltip_only_contains_quota_and_reset(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
         self.assertIn("BuildTooltip(next)", source)
         self.assertIn('FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display)', source)
         self.assertIn('FormatTooltipLine(L"周剩余额度", snapshot.weekly_display)', source)
         self.assertIn('FormatTooltipLine(L"重置", snapshot.reset_display)', source)
-        self.assertIn('FormatTooltipLine(L"今日 Token", snapshot.today_tokens_display)', source)
+        self.assertNotIn('FormatTooltipLine(L"今日 Token"', source)
+        self.assertNotIn("snapshot_.today_tokens_display", source)
         self.assertNotIn('FormatTooltipLine(L"状态"', source)
         self.assertNotIn('FormatTooltipLine(L"说明"', source)
         self.assertNotIn('FormatTooltipLine(L"计划"', source)
@@ -58,6 +59,11 @@ class ResetDisplayTest(unittest.TestCase):
         self.assertNotIn('FormatTooltipLine(L"刷新时间间隔"', source)
         self.assertNotIn('FormatTooltipLine(L"生成时间"', source)
         self.assertNotIn('L"状态文件: " + path', source)
+
+    def test_plugin_metadata_version_matches_release(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('case TMI_VERSION: return L"0.1.2";', source)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,9 @@ collector writes the same file.
 }
 ```
 
+`today_tokens*` fields are kept for collector/backward compatibility only. The
+TrafficMonitor plugin UI does not display the local Token estimate.
+
 `primary.window_minutes=300` from Codex session JSONL `rate_limits` or legacy
 `codex.rate_limits` logs is treated as the 5-hour quota.
 `secondary.window_minutes=10080` is treated as the weekly quota. Display fields

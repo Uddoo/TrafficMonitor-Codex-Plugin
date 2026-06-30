@@ -582,12 +582,10 @@ struct UsageSnapshot {
     std::wstring five_hour_display = L"--";
     std::wstring weekly_display = L"--";
     std::wstring reset_display = L"--";
-    std::wstring today_tokens_display = L"--";
     std::wstring status = L"waiting";
     std::wstring message = L"等待采集 Codex 用量";
     std::wstring generated_at_local = L"--";
     std::wstring plan_type = L"--";
-    std::wstring token_source = L"--";
     std::wstring rate_source = L"--";
     float five_hour_graph = 0.0f;
     float weekly_graph = 0.0f;
@@ -599,8 +597,7 @@ std::wstring BuildTooltip(const UsageSnapshot& snapshot)
     return
         FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display) +
         FormatTooltipLine(L"周剩余额度", snapshot.weekly_display) +
-        FormatTooltipLine(L"重置", snapshot.reset_display) +
-        FormatTooltipLine(L"今日 Token", snapshot.today_tokens_display);
+        FormatTooltipLine(L"重置", snapshot.reset_display);
 }
 
 class CodexUsagePlugin;
@@ -659,10 +656,10 @@ public:
     {
         switch (index) {
         case TMI_NAME: return L"Codex Usage";
-        case TMI_DESCRIPTION: return L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间和今日 Token 用量";
+        case TMI_DESCRIPTION: return L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间";
         case TMI_AUTHOR: return L"Codex";
         case TMI_COPYRIGHT: return L"MIT; PluginInterface.h Copyright (C) by Zhong Yang";
-        case TMI_VERSION: return L"0.1.0";
+        case TMI_VERSION: return L"0.1.2";
         case TMI_URL: return L"https://github.com/zhongyang219/TrafficMonitor/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97";
         default: return L"";
         }
@@ -715,7 +712,7 @@ public:
         if (command_index == 0) {
             LaunchCollector(true, true);
             LoadSnapshot();
-            Notify(L"Codex Usage 已刷新: " + snapshot_.five_hour_display + L" / " + snapshot_.weekly_display + L" / " + snapshot_.today_tokens_display);
+            Notify(L"Codex Usage 已刷新: " + snapshot_.five_hour_display + L" / " + snapshot_.weekly_display);
         } else if (command_index == 1) {
             OpenTextFile(StatusPath());
         } else if (command_index == 2) {
@@ -864,7 +861,7 @@ private:
         CreateChildControl(hwnd, L"EDIT", CollectorScriptPath(), ES_READONLY | ES_AUTOHSCROLL | WS_BORDER, WS_EX_CLIENTEDGE, -1, margin, y + 22, full_width, 24);
 
         y += 62;
-        std::wstring status = L"当前状态: " + snapshot_.status + L"    今日 Token: " + snapshot_.today_tokens_display;
+        std::wstring status = L"当前状态: " + snapshot_.status;
         CreateChildControl(hwnd, L"STATIC", status, 0, 0, -1, margin, y, full_width, 22);
 
         y += 42;
@@ -1166,12 +1163,10 @@ private:
         next.five_hour_display = ExtractJsonString(json, "five_hour_display", L"--");
         next.weekly_display = ExtractJsonString(json, "weekly_display", L"--");
         next.reset_display = ExtractJsonString(json, "reset_display", L"--");
-        next.today_tokens_display = ExtractJsonString(json, "today_tokens_display", L"--");
         next.status = ExtractJsonString(json, "status", L"unknown");
         next.message = ExtractJsonString(json, "message", L"");
         next.generated_at_local = ExtractJsonString(json, "generated_at_local", L"--");
         next.plan_type = ExtractJsonString(json, "plan_type", L"--");
-        next.token_source = ExtractJsonString(json, "today_token_source", L"--");
         next.rate_source = ExtractJsonString(json, "rate_limits_source", L"--");
 
         if (auto value = RemainingPercentFromJson(json, "five_hour_remaining_percent", "five_hour_used_percent"))

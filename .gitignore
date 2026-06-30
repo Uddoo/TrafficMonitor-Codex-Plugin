@@ -1,0 +1,12 @@
+build/
+dist/
+__pycache__/
+*.pyc
+*.zip
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+codex_usage_status.json

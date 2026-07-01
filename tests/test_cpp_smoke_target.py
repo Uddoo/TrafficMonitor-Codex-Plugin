@@ -16,6 +16,11 @@ class CppSmokeTargetTest(unittest.TestCase):
         self.assertIn("tests/cpp/json_parser_smoke.cpp", cmake)
         self.assertIn("add_test(NAME CodexUsageJsonParserSmoke", cmake)
 
+    def test_cmake_compiles_msvc_targets_as_utf8(self):
+        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+
+        self.assertIn("/utf-8", cmake)
+
 
 if __name__ == "__main__":
     unittest.main()

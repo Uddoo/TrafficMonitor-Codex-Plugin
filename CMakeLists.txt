@@ -10,6 +10,9 @@ add_library(CodexUsage SHARED
 target_include_directories(CodexUsage PRIVATE include)
 target_compile_features(CodexUsage PRIVATE cxx_std_17)
 target_compile_definitions(CodexUsage PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+if(MSVC)
+    target_compile_options(CodexUsage PRIVATE /utf-8)
+endif()
 target_link_libraries(CodexUsage PRIVATE Shell32 User32 Gdi32)
 set_target_properties(CodexUsage PROPERTIES OUTPUT_NAME "CodexUsage")
 
@@ -25,5 +28,8 @@ add_executable(CodexUsageJsonParserSmoke
 target_include_directories(CodexUsageJsonParserSmoke PRIVATE include)
 target_compile_features(CodexUsageJsonParserSmoke PRIVATE cxx_std_17)
 target_compile_definitions(CodexUsageJsonParserSmoke PRIVATE CODEX_USAGE_PLUGIN_TEST UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+if(MSVC)
+    target_compile_options(CodexUsageJsonParserSmoke PRIVATE /utf-8)
+endif()
 target_link_libraries(CodexUsageJsonParserSmoke PRIVATE Shell32 User32 Gdi32)
 add_test(NAME CodexUsageJsonParserSmoke COMMAND CodexUsageJsonParserSmoke)

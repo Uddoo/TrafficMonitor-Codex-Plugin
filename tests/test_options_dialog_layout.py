@@ -13,10 +13,22 @@ class OptionsDialogLayoutTest(unittest.TestCase):
         self.assertIn("文件位置", source)
         self.assertIn("当前状态", source)
         self.assertIn("打开脚本", source)
+        self.assertIn("Refresh settings", source)
+        self.assertIn("File locations", source)
+        self.assertIn("Current status", source)
+        self.assertIn("Open script", source)
         self.assertIn("kCopyJsonButtonId", source)
         self.assertIn("kCopyLogButtonId", source)
         self.assertIn("kCopyScriptButtonId", source)
         self.assertIn("CopyTextToClipboard", source)
+
+    def test_options_dialog_exposes_language_setting(self):
+        source = (ROOT / "src" / "CodexUsagePlugin.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("kLanguageComboId", source)
+        self.assertIn("LanguageModeToConfig", source)
+        self.assertIn("LanguageModeFromConfig", source)
+        self.assertIn("CB_ADDSTRING", source)
 
     def test_options_dialog_scales_and_refreshes_visible_status(self):
         source = (ROOT / "src" / "CodexUsagePlugin.cpp").read_text(encoding="utf-8")

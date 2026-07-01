@@ -13,6 +13,8 @@ class RefreshIntervalFeatureTest(unittest.TestCase):
         self.assertIn("codex_usage_plugin.ini", source)
         self.assertIn("refresh_interval_seconds", source)
         self.assertIn("refresh_interval_seconds_", source)
+        self.assertIn('L"language"', source)
+        self.assertIn("language_mode_", source)
         self.assertIn("RunOptionsDialog", source)
         self.assertIn("RefreshIntervalMilliseconds", source)
         self.assertIn("刷新时间间隔", readme)

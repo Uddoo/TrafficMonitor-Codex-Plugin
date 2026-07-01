@@ -2,7 +2,9 @@
 param(
     [string]$OutputPath,
     [string]$CodexHome,
-    [string]$LogPath
+    [string]$LogPath,
+    [ValidateSet('zh-CN', 'en-US', 'auto')]
+    [string]$Language = 'zh-CN'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +14,34 @@ function Get-DefaultCodexHome {
         return $env:CODEX_HOME
     }
     return (Join-Path $env:USERPROFILE '.codex')
+}
+
+function Normalize-Language {
+    param([string]$Value)
+    if ($Value -match '^en') {
+        return 'en-US'
+    }
+    return 'zh-CN'
+}
+
+function Get-LocalizedText {
+    param([string]$Key)
+    $isEnglish = (Normalize-Language $Language) -eq 'en-US'
+    $strings = @{
+        failed = @('采集失败', 'collection failed')
+        python_missing = @(
+            'Python was not found. Install Python or set CODEX_TRAFFICMONITOR_PYTHON to python.exe.',
+            'Python was not found. Install Python or set CODEX_TRAFFICMONITOR_PYTHON to python.exe.'
+        )
+    }
+    $pair = $strings[$Key]
+    if (-not $pair) {
+        return ''
+    }
+    if ($isEnglish) {
+        return $pair[1]
+    }
+    return $pair[0]
 }
 
 function Write-ErrorSnapshot {
@@ -32,12 +62,12 @@ function Write-ErrorSnapshot {
         five_hour_remaining_percent = $null
         weekly_display = '--'
         weekly_remaining_percent = $null
-        reset_display = 'failed'
+        reset_display = (Get-LocalizedText 'failed')
         today_tokens_display = '--'
         rate_limits_source = 'powershell-wrapper'
         today_token_source = 'powershell-wrapper'
         reset_credits_status = 'error'
-        reset_credits_message = '采集失败'
+        reset_credits_message = (Get-LocalizedText 'failed')
         reset_credits_available_count = $null
         reset_credits = @()
         reset_credits_tooltip = ''
@@ -58,6 +88,8 @@ function Write-PluginLog {
     Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
 }
 
+$Language = Normalize-Language $Language
+
 if (-not $CodexHome) {
     $CodexHome = Get-DefaultCodexHome
 }
@@ -75,7 +107,7 @@ if (-not $LogPath) {
     $LogPath = Join-Path (Split-Path -Parent $OutputPath) 'codex_usage_plugin.log'
 }
 
-Write-PluginLog "update_codex_usage.ps1 start OutputPath=$OutputPath CodexHome=$CodexHome"
+Write-PluginLog "update_codex_usage.ps1 start OutputPath=$OutputPath CodexHome=$CodexHome Language=$Language"
 
 $collector = Join-Path $PSScriptRoot 'collect_codex_usage.py'
 if (-not (Test-Path -LiteralPath $collector)) {
@@ -87,7 +119,7 @@ if (-not (Test-Path -LiteralPath $collector)) {
 $pythonOverride = $env:CODEX_TRAFFICMONITOR_PYTHON
 if ($pythonOverride -and (Test-Path -LiteralPath $pythonOverride)) {
     Write-PluginLog "using CODEX_TRAFFICMONITOR_PYTHON=$pythonOverride"
-    & $pythonOverride $collector --codex-home $CodexHome --output $OutputPath
+    & $pythonOverride $collector --codex-home $CodexHome --output $OutputPath --language $Language
     Write-PluginLog "python exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }
@@ -95,7 +127,7 @@ if ($pythonOverride -and (Test-Path -LiteralPath $pythonOverride)) {
 $python = Get-Command python -ErrorAction SilentlyContinue
 if ($python) {
     Write-PluginLog "using python=$($python.Source)"
-    & $python.Source $collector --codex-home $CodexHome --output $OutputPath
+    & $python.Source $collector --codex-home $CodexHome --output $OutputPath --language $Language
     Write-PluginLog "python exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }
@@ -103,11 +135,11 @@ if ($python) {
 $py = Get-Command py -ErrorAction SilentlyContinue
 if ($py) {
     Write-PluginLog "using py=$($py.Source)"
-    & $py.Source -3 $collector --codex-home $CodexHome --output $OutputPath
+    & $py.Source -3 $collector --codex-home $CodexHome --output $OutputPath --language $Language
     Write-PluginLog "py exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }
 
 Write-PluginLog 'python not found'
-Write-ErrorSnapshot -Path $OutputPath -Message 'Python was not found. Install Python or set CODEX_TRAFFICMONITOR_PYTHON to python.exe.'
+Write-ErrorSnapshot -Path $OutputPath -Message (Get-LocalizedText 'python_missing')
 exit 0

@@ -62,6 +62,38 @@ class RemainingQuotaDisplayTest(unittest.TestCase):
             self.assertEqual(snapshot["weekly_used_percent"], 34)
             self.assertEqual(snapshot["weekly_remaining_percent"], 66)
 
+    def test_snapshot_can_render_stale_remaining_percent_in_english(self):
+        collector = load_collector_module()
+        fixed_now = datetime.fromtimestamp(1782844800).astimezone()
+        collector.local_now = lambda: fixed_now
+        collector.find_today_tokens_from_logs = lambda codex_home, now: (12345, "test.tokens", 1)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir)
+            session_dir = codex_home / "sessions" / "2026" / "06" / "30"
+            session_dir.mkdir(parents=True)
+            session_file = session_dir / "rollout-2026-06-30T19-24-59-example.jsonl"
+            payload = {
+                "timestamp": "2026-06-30T11:24:59.000Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "rate_limits": {
+                        "primary": {
+                            "remaining_percent": 8,
+                            "window_minutes": 300,
+                            "resets_at": 1782818694,
+                        }
+                    },
+                },
+            }
+            session_file.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+
+            snapshot = collector.build_snapshot(codex_home, language="en-US")
+
+        self.assertEqual(snapshot["five_hour_display"], "8% stale")
+        self.assertIn("Rate-limit event is old", snapshot["message"])
+
 
 class RemainingQuotaCustomDrawTest(unittest.TestCase):
     def test_quota_items_use_custom_drawn_remaining_bar(self):

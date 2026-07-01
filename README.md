@@ -36,6 +36,7 @@ TrafficMonitor 常驻在任务栏或桌面的 Codex 用户。
 - 双击任一显示项，或从插件命令选择“立即刷新 Codex 用量”，可立刻触发后台采集。
 - 插件命令可打开状态 JSON、配置目录和诊断日志。
 - “插件选项”可查看/复制状态文件、日志文件、采集脚本路径，并设置刷新时间间隔。
+- “插件选项”可设置语言：`自动`、`中文` 或 `English`；自动模式会跟随 TrafficMonitor 当前语言。
 - 可显示 Codex 额度重置卡数量和过期时间；敏感 token、cookie、完整唯一 ID 不会写入状态文件。
 
 ### 运行要求
@@ -127,6 +128,11 @@ cmake --build build\cmake-x64 --config Release
 - `CODEX_TRAFFICMONITOR_PYTHON`：指定 `python.exe` 路径。
 - `CODEX_HOME`：指定 Codex 数据目录，默认 `%USERPROFILE%\.codex`。
 
+插件配置文件 `codex_usage_plugin.ini` 会保存：
+
+- `refresh_interval_seconds`：自动刷新间隔。
+- `language`：`auto`、`zh-CN` 或 `en-US`。
+
 ### 数据来源与隐私
 
 采集脚本只读取本机 Codex 数据：
@@ -204,12 +210,12 @@ weekly quota, reset time, today's token breakdown, and optional reset-credit car
 
 ### Features
 
-- Adds two TrafficMonitor items: `Codex 5 小时额度` (`5h`) and `Codex 周额度` (weekly).
+- Adds two TrafficMonitor items: `Codex 5-hour quota` (`5h`) and `Codex weekly quota` (`wk`).
 - Renders remaining quota as compact percentage text plus a small bar.
 - Shows reset times and today's `Input` / `Output` / `Cached` tokens in the tooltip.
 - Refreshes on item double-click or through the plugin command menu.
 - Opens the status JSON, config directory, and diagnostic log from plugin commands.
-- Provides an options dialog for refresh interval and file-path inspection/copying.
+- Provides an options dialog for refresh interval, language, and file-path inspection/copying.
 - Keeps reset-credit output sanitized; access tokens, refresh tokens, cookies, and full IDs are not written to the status JSON.
 
 ### Requirements
@@ -234,7 +240,13 @@ weekly quota, reset time, today's token breakdown, and optional reset-credit car
    ```
 
 3. Restart TrafficMonitor.
-4. Enable `Codex 5 小时额度` and `Codex 周额度` in TrafficMonitor's display-item settings.
+4. Enable `Codex 5-hour quota` and `Codex weekly quota` in TrafficMonitor's display-item settings.
+
+### Language
+
+The options dialog supports `Auto`, `Chinese`, and `English`. Auto follows the
+current TrafficMonitor language, and other non-Chinese host languages fall back to English.
+The setting is saved in `codex_usage_plugin.ini` as `language=auto`, `zh-CN`, or `en-US`.
 
 ### Build
 

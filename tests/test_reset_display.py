@@ -30,6 +30,16 @@ class ResetDisplayTest(unittest.TestCase):
 
         self.assertEqual(result, "旧: 5h 06-23 19:05 / 周 06-25 09:12")
 
+    def test_stale_rate_limit_can_render_in_english(self):
+        collector = load_collector_module()
+        primary_reset = datetime(2026, 6, 23, 19, 5).astimezone()
+        weekly_reset = datetime(2026, 6, 25, 9, 12).astimezone()
+        now = datetime(2026, 6, 30, 19, 0).astimezone()
+
+        result = collector.reset_display_for_limits(primary_reset, weekly_reset, stale=True, now=now, language="en-US")
+
+        self.assertEqual(result, "Stale: 5h 06-23 19:05 / wk 06-25 09:12")
+
     def test_reset_is_tooltip_only_and_today_tokens_are_hidden(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
@@ -39,17 +49,17 @@ class ResetDisplayTest(unittest.TestCase):
         self.assertNotIn("Codex 重置时间", source)
         self.assertNotIn("Codex 今日 Token", source)
         self.assertNotIn("今日 Token", source)
-        self.assertIn("BuildTooltip(next)", source)
-        self.assertIn('FormatTooltipLine(L"重置", snapshot.reset_display)', source)
+        self.assertIn("BuildTooltip(next, CurrentLanguage())", source)
+        self.assertIn("tooltip_reset", source)
 
     def test_tooltip_contains_quota_reset_and_token_breakdown(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn("BuildTooltip(next)", source)
-        self.assertIn('FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display)', source)
-        self.assertIn('FormatTooltipLine(L"周剩余额度", snapshot.weekly_display)', source)
-        self.assertIn('FormatTooltipLine(L"重置", snapshot.reset_display)', source)
-        self.assertIn('L"\\r\\nToken 明细\\r\\n"', source)
+        self.assertIn("BuildTooltip(next, CurrentLanguage())", source)
+        self.assertIn("tooltip_five_hour_quota", source)
+        self.assertIn("tooltip_weekly_quota", source)
+        self.assertIn("tooltip_reset", source)
+        self.assertIn("tooltip_token_breakdown", source)
         self.assertIn('FormatTooltipLine(L"Input", snapshot.today_input_tokens_display)', source)
         self.assertIn('FormatTooltipLine(L"Output", snapshot.today_output_tokens_display)', source)
         self.assertIn('FormatTooltipLine(L"Cached", snapshot.today_cached_input_tokens_display)', source)
@@ -67,7 +77,7 @@ class ResetDisplayTest(unittest.TestCase):
     def test_plugin_metadata_version_matches_release(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('case TMI_VERSION: return L"0.1.4";', source)
+        self.assertIn('case TMI_VERSION: return L"0.1.5";', source)
 
 
 if __name__ == "__main__":

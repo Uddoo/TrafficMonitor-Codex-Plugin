@@ -23,6 +23,56 @@ MAX_SESSION_JSONL_FILES = 300
 RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 RESET_CREDITS_TIMEOUT_SECONDS = 6.0
 UNIQUE_ID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+DEFAULT_LANGUAGE = "zh-CN"
+
+
+LOCALIZED_TEXT = {
+    "zh-CN": {
+        "old_prefix": "旧: ",
+        "old_suffix": " 旧",
+        "weekly_reset_label": "周",
+        "reset_done": "已重置",
+        "reset_credits_header": "重置卡: {count} 张可用",
+        "reset_credit_granted": "获取",
+        "reset_credit_expires": "过期",
+        "unauthorized": "401: 凭证失效或未携带 Authorization header",
+        "ok": "正常",
+        "no_rate_limits": "未找到 codex.rate_limits 日志事件；额度显示为空",
+        "stale_rate_limits": "额度事件较旧，百分比仅供参考",
+        "five_hour_resets": "5h 重置 {duration}",
+        "weekly_resets": "周重置 {duration}",
+        "no_tokens": "未能统计今日 Token",
+        "collection_failed": "采集失败",
+    },
+    "en-US": {
+        "old_prefix": "Stale: ",
+        "old_suffix": " stale",
+        "weekly_reset_label": "wk",
+        "reset_done": "reset",
+        "reset_credits_header": "Reset credits: {count} available",
+        "reset_credit_granted": "Granted",
+        "reset_credit_expires": "Expires",
+        "unauthorized": "401: credentials expired or Authorization header was not included",
+        "ok": "OK",
+        "no_rate_limits": "No codex.rate_limits log event was found; quota display is empty",
+        "stale_rate_limits": "Rate-limit event is old; percentages are for reference only",
+        "five_hour_resets": "5h resets in {duration}",
+        "weekly_resets": "Weekly resets in {duration}",
+        "no_tokens": "Could not count today's tokens",
+        "collection_failed": "collection failed",
+    },
+}
+
+
+def normalize_language(value: str | None) -> str:
+    if value and value.lower().startswith("en"):
+        return "en-US"
+    return "zh-CN"
+
+
+def localized_text(language: str, key: str) -> str:
+    normalized = normalize_language(language)
+    return LOCALIZED_TEXT[normalized][key]
 
 
 @dataclass
@@ -179,18 +229,25 @@ def normalize_reset_credit(credit: Any) -> dict[str, str] | None:
     }
 
 
-def build_reset_credits_tooltip(available_count: int | None, credits: list[dict[str, str]]) -> str:
+def build_reset_credits_tooltip(
+    available_count: int | None,
+    credits: list[dict[str, str]],
+    language: str = DEFAULT_LANGUAGE,
+) -> str:
     if available_count is None:
         return ""
 
-    lines = [f"重置卡: {available_count} 张可用"]
+    lines = [localized_text(language, "reset_credits_header").format(count=available_count)]
     for index, credit in enumerate(credits, start=1):
         lines.append(f"  {index}. {credit['status']} | {credit['title']}")
-        lines.append(f"     获取 {credit['granted_at']}    过期 {credit['expires_at']}")
+        lines.append(
+            f"     {localized_text(language, 'reset_credit_granted')} {credit['granted_at']}"
+            f"    {localized_text(language, 'reset_credit_expires')} {credit['expires_at']}"
+        )
     return "\r\n".join(lines) + "\r\n"
 
 
-def collect_reset_credits(codex_home: Path) -> dict[str, Any]:
+def collect_reset_credits(codex_home: Path, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
     access_token = read_codex_access_token(codex_home)
     if access_token is None:
         return default_reset_credits_snapshot("missing_auth")
@@ -198,7 +255,7 @@ def collect_reset_credits(codex_home: Path) -> dict[str, Any]:
     try:
         payload = fetch_reset_credits_response(access_token, RESET_CREDITS_TIMEOUT_SECONDS)
     except ResetCreditsUnauthorizedError:
-        return default_reset_credits_snapshot("unauthorized", "401: 凭证失效或未携带 Authorization header")
+        return default_reset_credits_snapshot("unauthorized", localized_text(language, "unauthorized"))
     except ResetCreditsRequestError as exc:
         return default_reset_credits_snapshot("error", str(exc))
 
@@ -216,10 +273,10 @@ def collect_reset_credits(codex_home: Path) -> dict[str, Any]:
 
     return {
         "reset_credits_status": "ok",
-        "reset_credits_message": "正常",
+        "reset_credits_message": localized_text(language, "ok"),
         "reset_credits_available_count": available_count,
         "reset_credits": credits,
-        "reset_credits_tooltip": build_reset_credits_tooltip(available_count, credits),
+        "reset_credits_tooltip": build_reset_credits_tooltip(available_count, credits, language),
     }
 
 
@@ -236,6 +293,7 @@ def reset_display_for_limits(
     secondary_reset: datetime | None,
     stale: bool,
     now: datetime,
+    language: str = DEFAULT_LANGUAGE,
 ) -> str:
     both_resets_expired = (
         primary_reset is not None
@@ -243,19 +301,19 @@ def reset_display_for_limits(
         and secondary_reset is not None
         and secondary_reset <= now
     )
-    prefix = "旧: " if stale or both_resets_expired else ""
+    prefix = localized_text(language, "old_prefix") if stale or both_resets_expired else ""
     return (
         f"{prefix}5h {format_dt_relative_to(primary_reset, now)}"
-        f" / 周 {format_dt_relative_to(secondary_reset, now)}"
+        f" / {localized_text(language, 'weekly_reset_label')} {format_dt_relative_to(secondary_reset, now)}"
     )
 
 
-def format_duration(seconds: int | float | None) -> str:
+def format_duration(seconds: int | float | None, language: str = DEFAULT_LANGUAGE) -> str:
     if seconds is None:
         return "--"
     seconds = int(seconds)
     if seconds <= 0:
-        return "已重置"
+        return localized_text(language, "reset_done")
     days, rem = divmod(seconds, 86400)
     hours, rem = divmod(rem, 3600)
     minutes = rem // 60
@@ -716,7 +774,12 @@ def bounded_percent(value: Any) -> int | None:
         return None
 
 
-def quota_percent_display(limit: dict[str, Any] | None, stale: bool, now: datetime) -> tuple[str, int | None, int | None]:
+def quota_percent_display(
+    limit: dict[str, Any] | None,
+    stale: bool,
+    now: datetime,
+    language: str = DEFAULT_LANGUAGE,
+) -> tuple[str, int | None, int | None]:
     if not limit:
         return "--", None, None
 
@@ -731,14 +794,15 @@ def quota_percent_display(limit: dict[str, Any] | None, stale: bool, now: dateti
 
     reset_at = from_epoch(limit.get("reset_at"))
     old = stale or (reset_at is not None and reset_at <= now)
-    suffix = " 旧" if old else ""
+    suffix = localized_text(language, "old_suffix") if old else ""
     return f"{remaining_int}%{suffix}", used_int, remaining_int
 
 
-def build_snapshot(codex_home: Path) -> dict[str, Any]:
+def build_snapshot(codex_home: Path, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
+    language = normalize_language(language)
     now = local_now()
     generated_at = now.isoformat(timespec="seconds")
-    reset_credits = collect_reset_credits(codex_home)
+    reset_credits = collect_reset_credits(codex_home, language)
 
     token_breakdown, token_source, token_count = find_today_token_breakdown_from_rollouts(codex_home, now)
     if token_breakdown is not None:
@@ -764,7 +828,7 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
 
     if event is None:
         status = "partial"
-        messages.append("未找到 codex.rate_limits 日志事件；额度显示为空")
+        messages.append(localized_text(language, "no_rate_limits"))
     else:
         payload = event.payload
         plan_type = str(payload.get("plan_type") or "--")
@@ -773,29 +837,29 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
         stale = rate_age_seconds > STALE_RATE_LIMIT_SECONDS
         if stale:
             status = "stale"
-            messages.append("额度事件较旧，百分比仅供参考")
+            messages.append(localized_text(language, "stale_rate_limits"))
 
         limits = payload.get("rate_limits") or {}
         primary = limits.get("primary") or {}
         secondary = limits.get("secondary") or {}
-        five_display, five_used, five_remaining = quota_percent_display(primary, stale, now)
-        week_display, week_used, week_remaining = quota_percent_display(secondary, stale, now)
+        five_display, five_used, five_remaining = quota_percent_display(primary, stale, now, language)
+        week_display, week_used, week_remaining = quota_percent_display(secondary, stale, now, language)
 
         primary_reset = from_epoch(primary.get("reset_at"))
         secondary_reset = from_epoch(secondary.get("reset_at"))
         primary_reset_in = None if primary_reset is None else (primary_reset - now).total_seconds()
         secondary_reset_in = None if secondary_reset is None else (secondary_reset - now).total_seconds()
-        reset_display = reset_display_for_limits(primary_reset, secondary_reset, stale, now)
+        reset_display = reset_display_for_limits(primary_reset, secondary_reset, stale, now, language)
         if primary_reset and primary_reset > now:
-            messages.append(f"5h 重置 {format_duration(primary_reset_in)}")
+            messages.append(localized_text(language, "five_hour_resets").format(duration=format_duration(primary_reset_in, language)))
         if secondary_reset and secondary_reset > now:
-            messages.append(f"周重置 {format_duration(secondary_reset_in)}")
+            messages.append(localized_text(language, "weekly_resets").format(duration=format_duration(secondary_reset_in, language)))
 
     if tokens is None:
         today_tokens_display = "--"
         if status == "ok":
             status = "partial"
-        messages.append("未能统计今日 Token")
+        messages.append(localized_text(language, "no_tokens"))
     else:
         today_tokens_display = format_tokens(tokens)
 
@@ -814,7 +878,8 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
         today_output_tokens_display = format_tokens(today_output_tokens)
         today_cached_input_tokens_display = format_tokens(today_cached_input_tokens)
 
-    message = "；".join(messages) if messages else "正常"
+    message_separator = "; " if language == "en-US" else "；"
+    message = message_separator.join(messages) if messages else localized_text(language, "ok")
     snapshot = {
         "schema_version": 1,
         "status": status,
@@ -881,13 +946,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--codex-home", default=None)
     parser.add_argument("--output", default=None)
+    parser.add_argument("--language", default=DEFAULT_LANGUAGE, choices=["zh-CN", "en-US", "auto"])
     args = parser.parse_args()
 
     codex_home = Path(args.codex_home).expanduser() if args.codex_home else default_codex_home()
     output = Path(args.output).expanduser() if args.output else default_output_path(codex_home)
+    language = normalize_language(args.language)
 
     try:
-        payload = build_snapshot(codex_home)
+        payload = build_snapshot(codex_home, language)
     except Exception as exc:  # noqa: BLE001 - this is a background status writer.
         payload = {
             "schema_version": 1,
@@ -896,12 +963,12 @@ def main() -> int:
             "generated_at_local": local_now().isoformat(timespec="seconds"),
             "five_hour_display": "--",
             "weekly_display": "--",
-            "reset_display": "采集失败",
+            "reset_display": localized_text(language, "collection_failed"),
             "today_tokens_display": "--",
             "rate_limits_source": "error",
             "today_token_source": "error",
             "reset_credits_status": "error",
-            "reset_credits_message": "采集失败",
+            "reset_credits_message": localized_text(language, "collection_failed"),
             "reset_credits_available_count": None,
             "reset_credits": [],
             "reset_credits_tooltip": "",

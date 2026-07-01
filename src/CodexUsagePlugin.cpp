@@ -37,9 +37,258 @@ constexpr int kRefreshButtonId = 1105;
 constexpr int kCopyJsonButtonId = 1106;
 constexpr int kCopyLogButtonId = 1107;
 constexpr int kCopyScriptButtonId = 1108;
+constexpr int kLanguageComboId = 1109;
 constexpr int kQuotaBarHeight = 4;
 constexpr int kQuotaBarWidth = 36;
 constexpr int kQuotaValueGap = 3;
+
+enum class UiLanguage {
+    Chinese,
+    English,
+};
+
+enum class LanguageMode {
+    Auto,
+    Chinese,
+    English,
+};
+
+struct LocalizedText {
+    const wchar_t* plugin_description;
+    const wchar_t* tooltip_five_hour_quota;
+    const wchar_t* tooltip_weekly_quota;
+    const wchar_t* tooltip_reset;
+    const wchar_t* tooltip_token_breakdown;
+    const wchar_t* item_five_hour_name;
+    const wchar_t* item_weekly_name;
+    const wchar_t* item_five_hour_label;
+    const wchar_t* item_weekly_label;
+    const wchar_t* command_refresh;
+    const wchar_t* command_open_json;
+    const wchar_t* command_open_config_dir;
+    const wchar_t* command_open_log;
+    const wchar_t* notify_refreshed_prefix;
+    const wchar_t* group_refresh_settings;
+    const wchar_t* label_refresh_interval;
+    const wchar_t* label_language;
+    const wchar_t* language_auto;
+    const wchar_t* language_chinese;
+    const wchar_t* language_english;
+    const wchar_t* unit_seconds;
+    const wchar_t* refresh_range_hint;
+    const wchar_t* group_file_locations;
+    const wchar_t* label_status_json;
+    const wchar_t* label_diagnostic_log;
+    const wchar_t* label_collector_script;
+    const wchar_t* button_open_json;
+    const wchar_t* button_open_log;
+    const wchar_t* button_open_script;
+    const wchar_t* button_copy;
+    const wchar_t* group_current_status;
+    const wchar_t* label_status;
+    const wchar_t* status_updated_at;
+    const wchar_t* button_save_refresh;
+    const wchar_t* button_refresh_now;
+    const wchar_t* button_close;
+    const wchar_t* notify_path_copied;
+    const wchar_t* copy_failed_message;
+    const wchar_t* not_found_prefix;
+    const wchar_t* refresh_interval_validation_prefix;
+    const wchar_t* refresh_interval_validation_suffix;
+    const wchar_t* refresh_done_message;
+    const wchar_t* options_title;
+    const wchar_t* missing_collector_script_prefix;
+    const wchar_t* reset_script_missing;
+    const wchar_t* collecting_message;
+    const wchar_t* reset_collecting;
+    const wchar_t* log_start_collector;
+    const wchar_t* log_collector_exit;
+    const wchar_t* log_collector_timeout;
+    const wchar_t* collector_running_notify;
+    const wchar_t* log_collector_wait_failed;
+    const wchar_t* powershell_launch_failed_prefix;
+    const wchar_t* reset_launch_failed;
+    const wchar_t* waiting_for_collection;
+    const wchar_t* missing_script_or_status;
+};
+
+const LocalizedText& TextFor(UiLanguage language)
+{
+    static const LocalizedText zh{
+        L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间",
+        L"5 小时剩余额度",
+        L"周剩余额度",
+        L"重置",
+        L"Token 明细",
+        L"Codex 5 小时额度",
+        L"Codex 周额度",
+        L"5h",
+        L"周",
+        L"立即刷新 Codex 用量",
+        L"打开 Codex 用量 JSON",
+        L"打开 Codex Usage 配置目录",
+        L"打开 Codex Usage 诊断日志",
+        L"Codex Usage 已刷新: ",
+        L"刷新设置",
+        L"刷新间隔",
+        L"语言",
+        L"自动",
+        L"中文",
+        L"English",
+        L"秒",
+        L"范围 10-3600，保存后立即刷新一次",
+        L"文件位置",
+        L"状态 JSON",
+        L"诊断日志",
+        L"采集脚本",
+        L"打开 JSON",
+        L"打开日志",
+        L"打开脚本",
+        L"复制",
+        L"当前状态",
+        L"状态",
+        L"更新时间: ",
+        L"保存并刷新",
+        L"立即刷新",
+        L"关闭",
+        L"路径已复制到剪贴板",
+        L"复制路径失败，请手动选中文本复制。",
+        L"未找到",
+        L"请输入 ",
+        L" 之间的刷新间隔秒数。",
+        L"Codex 用量已刷新。",
+        L"Codex Usage 选项",
+        L"未找到采集脚本: ",
+        L"脚本缺失",
+        L"正在生成 Codex 用量快照",
+        L"采集中",
+        L"启动采集: ",
+        L"采集进程退出: ",
+        L"采集进程仍在运行，已超过 15 秒等待窗口",
+        L"Codex Usage 采集仍在运行，请稍后查看",
+        L"等待采集进程失败: ",
+        L"启动 PowerShell 采集失败: ",
+        L"启动失败",
+        L"正在生成 Codex 用量快照",
+        L"未找到采集脚本或状态 JSON",
+    };
+
+    static const LocalizedText en{
+        L"Displays remaining Codex 5-hour and weekly quota; tooltip shows reset time",
+        L"5-hour quota remaining",
+        L"Weekly quota remaining",
+        L"Reset",
+        L"Token breakdown",
+        L"Codex 5-hour quota",
+        L"Codex weekly quota",
+        L"5h",
+        L"wk",
+        L"Refresh Codex usage now",
+        L"Open Codex usage JSON",
+        L"Open Codex Usage config folder",
+        L"Open Codex Usage diagnostic log",
+        L"Codex Usage refreshed: ",
+        L"Refresh settings",
+        L"Refresh interval",
+        L"Language",
+        L"Auto",
+        L"Chinese",
+        L"English",
+        L"sec",
+        L"Range 10-3600. Saving refreshes once.",
+        L"File locations",
+        L"Status JSON",
+        L"Diagnostic log",
+        L"Collector script",
+        L"Open JSON",
+        L"Open log",
+        L"Open script",
+        L"Copy",
+        L"Current status",
+        L"Status",
+        L"Updated: ",
+        L"Save and refresh",
+        L"Refresh now",
+        L"Close",
+        L"Path copied to clipboard",
+        L"Could not copy the path. Select the text and copy it manually.",
+        L"Not found: ",
+        L"Enter a refresh interval between ",
+        L" seconds.",
+        L"Codex usage has been refreshed.",
+        L"Codex Usage Options",
+        L"Collector script not found: ",
+        L"script missing",
+        L"Generating Codex usage snapshot",
+        L"collecting",
+        L"Start collector: ",
+        L"Collector process exited: ",
+        L"Collector is still running after the 15-second wait window",
+        L"Codex Usage collection is still running. Check again later.",
+        L"Waiting for collector process failed: ",
+        L"Failed to start PowerShell collector: ",
+        L"launch failed",
+        L"Generating Codex usage snapshot",
+        L"Collector script or status JSON was not found",
+    };
+
+    return language == UiLanguage::English ? en : zh;
+}
+
+std::wstring LanguageModeToConfig(LanguageMode mode)
+{
+    switch (mode) {
+    case LanguageMode::Chinese: return L"zh-CN";
+    case LanguageMode::English: return L"en-US";
+    case LanguageMode::Auto:
+    default:
+        return L"auto";
+    }
+}
+
+LanguageMode LanguageModeFromConfig(const std::wstring& value)
+{
+    std::wstring lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+
+    if (lower == L"en" || lower == L"en-us" || lower == L"english")
+        return LanguageMode::English;
+    if (lower == L"zh" || lower == L"zh-cn" || lower == L"zh-hans" || lower == L"chinese")
+        return LanguageMode::Chinese;
+    return LanguageMode::Auto;
+}
+
+UiLanguage LanguageFromLangId(unsigned short language_id)
+{
+    return PRIMARYLANGID(language_id) == LANG_CHINESE ? UiLanguage::Chinese : UiLanguage::English;
+}
+
+const wchar_t* LanguageArgument(UiLanguage language)
+{
+    return language == UiLanguage::English ? L"en-US" : L"zh-CN";
+}
+
+int LanguageModeToComboIndex(LanguageMode mode)
+{
+    switch (mode) {
+    case LanguageMode::Chinese: return 1;
+    case LanguageMode::English: return 2;
+    case LanguageMode::Auto:
+    default:
+        return 0;
+    }
+}
+
+LanguageMode LanguageModeFromComboIndex(int index)
+{
+    if (index == 1)
+        return LanguageMode::Chinese;
+    if (index == 2)
+        return LanguageMode::English;
+    return LanguageMode::Auto;
+}
 
 std::wstring Utf8ToWide(const std::string& value)
 {
@@ -516,7 +765,7 @@ int MeasureTextWidth(HDC dc, const wchar_t* text)
 
 int QuotaLabelSlotWidth(HDC dc)
 {
-    return std::max(MeasureTextWidth(dc, L"5h"), MeasureTextWidth(dc, L"周"));
+    return std::max(std::max(MeasureTextWidth(dc, L"5h"), MeasureTextWidth(dc, L"周")), MeasureTextWidth(dc, L"wk"));
 }
 
 int QuotaPercentSlotWidth(HDC dc)
@@ -627,7 +876,7 @@ struct UsageSnapshot {
     std::wstring weekly_display = L"--";
     std::wstring reset_display = L"--";
     std::wstring status = L"waiting";
-    std::wstring message = L"等待采集 Codex 用量";
+    std::wstring message;
     std::wstring generated_at_local = L"--";
     std::wstring plan_type = L"--";
     std::wstring rate_source = L"--";
@@ -637,17 +886,18 @@ struct UsageSnapshot {
     std::wstring reset_credits_tooltip;
     float five_hour_graph = 0.0f;
     float weekly_graph = 0.0f;
-    std::wstring tooltip = L"Codex 用量：等待采集";
+    std::wstring tooltip;
 };
 
-std::wstring BuildTooltip(const UsageSnapshot& snapshot)
+std::wstring BuildTooltip(const UsageSnapshot& snapshot, UiLanguage language)
 {
+    const LocalizedText& text = TextFor(language);
     std::wstring tooltip =
-        FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display) +
-        FormatTooltipLine(L"周剩余额度", snapshot.weekly_display) +
-        FormatTooltipLine(L"重置", snapshot.reset_display);
+        FormatTooltipLine(text.tooltip_five_hour_quota, snapshot.five_hour_display) +
+        FormatTooltipLine(text.tooltip_weekly_quota, snapshot.weekly_display) +
+        FormatTooltipLine(text.tooltip_reset, snapshot.reset_display);
     tooltip +=
-        L"\r\nToken 明细\r\n" +
+        L"\r\n" + std::wstring(text.tooltip_token_breakdown) + L"\r\n" +
         FormatTooltipLine(L"Input", snapshot.today_input_tokens_display) +
         FormatTooltipLine(L"Output", snapshot.today_output_tokens_display) +
         FormatTooltipLine(L"Cached", snapshot.today_cached_input_tokens_display);
@@ -679,6 +929,11 @@ public:
     int IsDrawResourceUsageGraph() const override;
     float GetResourceUsageGraphValue() const override;
     int OnMouseEvent(MouseEventType type, int, int, void*, int) override;
+    void SetLocalizedText(const wchar_t* name, const wchar_t* label)
+    {
+        name_ = name;
+        label_ = label;
+    }
 
 private:
     CodexUsagePlugin& plugin_;
@@ -714,10 +969,10 @@ public:
     {
         switch (index) {
         case TMI_NAME: return L"Codex Usage";
-        case TMI_DESCRIPTION: return L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间";
+        case TMI_DESCRIPTION: return Text().plugin_description;
         case TMI_AUTHOR: return L"Codex";
         case TMI_COPYRIGHT: return L"MIT; PluginInterface.h Copyright (C) by Zhong Yang";
-        case TMI_VERSION: return L"0.1.4";
+        case TMI_VERSION: return L"0.1.5";
         case TMI_URL: return L"https://github.com/zhongyang219/TrafficMonitor/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97";
         default: return L"";
         }
@@ -742,6 +997,7 @@ public:
     {
         app_ = pApp;
         LoadSettings();
+        UpdateItemTexts();
         LaunchCollector(false, false);
         LoadSnapshot();
     }
@@ -755,11 +1011,12 @@ public:
 
     const wchar_t* GetCommandName(int command_index) override
     {
+        const LocalizedText& text = Text();
         switch (command_index) {
-        case 0: return L"立即刷新 Codex 用量";
-        case 1: return L"打开 Codex 用量 JSON";
-        case 2: return L"打开 Codex Usage 配置目录";
-        case 3: return L"打开 Codex Usage 诊断日志";
+        case 0: return text.command_refresh;
+        case 1: return text.command_open_json;
+        case 2: return text.command_open_config_dir;
+        case 3: return text.command_open_log;
         default: return nullptr;
         }
     }
@@ -770,7 +1027,7 @@ public:
         if (command_index == 0) {
             LaunchCollector(true, true);
             LoadSnapshot();
-            Notify(L"Codex Usage 已刷新: " + snapshot_.five_hour_display + L" / " + snapshot_.weekly_display);
+            Notify(std::wstring(Text().notify_refreshed_prefix) + snapshot_.five_hour_display + L" / " + snapshot_.weekly_display);
         } else if (command_index == 1) {
             OpenTextFile(StatusPath());
         } else if (command_index == 2) {
@@ -812,14 +1069,45 @@ private:
             CodexUsageItem(*this, ItemKind::Weekly, L"Codex 周额度", L"CodexWeeklyQuota", L"周", L"100%")
         }
     {
+        UpdateItemTexts();
     }
 
     struct OptionsDialogState {
         CodexUsagePlugin* plugin{};
         HWND interval_edit{};
+        HWND language_combo{};
         HWND status_text{};
         bool saved{};
     };
+
+    UiLanguage CurrentLanguage() const
+    {
+        switch (language_mode_) {
+        case LanguageMode::Chinese:
+            return UiLanguage::Chinese;
+        case LanguageMode::English:
+            return UiLanguage::English;
+        case LanguageMode::Auto:
+        default:
+            break;
+        }
+
+        if (app_ != nullptr)
+            return LanguageFromLangId(app_->GetLanguageId());
+        return LanguageFromLangId(GetUserDefaultUILanguage());
+    }
+
+    const LocalizedText& Text() const
+    {
+        return TextFor(CurrentLanguage());
+    }
+
+    void UpdateItemTexts()
+    {
+        const LocalizedText& text = Text();
+        items_[0].SetLocalizedText(text.item_five_hour_name, text.item_five_hour_label);
+        items_[1].SetLocalizedText(text.item_weekly_name, text.item_weekly_label);
+    }
 
     std::wstring ConfigPath()
     {
@@ -838,7 +1126,17 @@ private:
             kDefaultRefreshIntervalSeconds,
             path.c_str()));
         refresh_interval_seconds_ = std::clamp(value, kMinRefreshIntervalSeconds, kMaxRefreshIntervalSeconds);
+        wchar_t language_buffer[32]{};
+        GetPrivateProfileStringW(
+            L"settings",
+            L"language",
+            L"auto",
+            language_buffer,
+            static_cast<DWORD>(sizeof(language_buffer) / sizeof(language_buffer[0])),
+            path.c_str());
+        language_mode_ = LanguageModeFromConfig(language_buffer);
         settings_loaded_ = true;
+        UpdateItemTexts();
 
         if (!FileExists(path))
             SaveSettings();
@@ -850,6 +1148,8 @@ private:
         EnsureDirectory(DirectoryName(path));
         std::wstring value = std::to_wstring(refresh_interval_seconds_);
         WritePrivateProfileStringW(L"settings", L"refresh_interval_seconds", value.c_str(), path.c_str());
+        std::wstring language = LanguageModeToConfig(language_mode_);
+        WritePrivateProfileStringW(L"settings", L"language", language.c_str(), path.c_str());
     }
 
     ULONGLONG RefreshIntervalMilliseconds()
@@ -932,14 +1232,14 @@ private:
         int open_x = x + label_width + gap + edit_width + gap;
         int copy_x = open_x + open_width + gap;
         CreateChildControl(hwnd, L"BUTTON", open_text, WS_TABSTOP | BS_PUSHBUTTON, 0, open_id, open_x, y - ScaleForDpi(1, OptionsDpi()), open_width, ScaleForDpi(28, OptionsDpi()));
-        CreateChildControl(hwnd, L"BUTTON", L"复制", WS_TABSTOP | BS_PUSHBUTTON, 0, copy_id, copy_x, y - ScaleForDpi(1, OptionsDpi()), copy_width, ScaleForDpi(28, OptionsDpi()));
+        CreateChildControl(hwnd, L"BUTTON", Text().button_copy, WS_TABSTOP | BS_PUSHBUTTON, 0, copy_id, copy_x, y - ScaleForDpi(1, OptionsDpi()), copy_width, ScaleForDpi(28, OptionsDpi()));
     }
 
     std::wstring OptionsStatusText() const
     {
         std::wstring status = snapshot_.status.empty() ? L"--" : snapshot_.status;
         if (!snapshot_.generated_at_local.empty() && snapshot_.generated_at_local != L"--")
-            status += L"    更新时间: " + snapshot_.generated_at_local;
+            status += L"    " + std::wstring(Text().status_updated_at) + snapshot_.generated_at_local;
         if (!snapshot_.message.empty())
             status += L"    " + snapshot_.message;
         return status;
@@ -953,20 +1253,21 @@ private:
 
     void CreateOptionsControls(HWND hwnd, OptionsDialogState& state)
     {
+        const LocalizedText& text = Text();
         const int dpi = OptionsDpi();
         const int margin = ScaleForDpi(18, dpi);
         const int content_width = ScaleForDpi(760, dpi);
         const int group_x = margin;
         const int inner_x = margin + ScaleForDpi(14, dpi);
         const int gap = ScaleForDpi(8, dpi);
-        const int label_width = ScaleForDpi(80, dpi);
-        const int open_width = ScaleForDpi(76, dpi);
-        const int copy_width = ScaleForDpi(58, dpi);
+        const int label_width = ScaleForDpi(112, dpi);
+        const int open_width = ScaleForDpi(94, dpi);
+        const int copy_width = ScaleForDpi(64, dpi);
         const int path_edit_width = content_width - ScaleForDpi(28, dpi) - label_width - gap - open_width - gap - copy_width;
 
         int y = ScaleForDpi(14, dpi);
-        CreateChildControl(hwnd, L"BUTTON", L"刷新设置", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(74, dpi));
-        CreateChildControl(hwnd, L"STATIC", L"刷新间隔", 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
+        CreateChildControl(hwnd, L"BUTTON", text.group_refresh_settings, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(112, dpi));
+        CreateChildControl(hwnd, L"STATIC", text.label_refresh_interval, 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
         state.interval_edit = CreateChildControl(
             hwnd,
             L"EDIT",
@@ -978,50 +1279,69 @@ private:
             y + ScaleForDpi(27, dpi),
             ScaleForDpi(76, dpi),
             ScaleForDpi(25, dpi));
-        CreateChildControl(hwnd, L"STATIC", L"秒", 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(84, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(28, dpi), ScaleForDpi(22, dpi));
-        CreateChildControl(hwnd, L"STATIC", L"范围 10-3600，保存后立即刷新一次", 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(120, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(420, dpi), ScaleForDpi(22, dpi));
+        CreateChildControl(hwnd, L"STATIC", text.unit_seconds, 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(84, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(34, dpi), ScaleForDpi(22, dpi));
+        CreateChildControl(hwnd, L"STATIC", text.refresh_range_hint, 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(130, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(470, dpi), ScaleForDpi(22, dpi));
 
-        y += ScaleForDpi(86, dpi);
-        CreateChildControl(hwnd, L"BUTTON", L"文件位置", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(158, dpi));
+        CreateChildControl(hwnd, L"STATIC", text.label_language, 0, 0, -1, inner_x, y + ScaleForDpi(68, dpi), label_width, ScaleForDpi(22, dpi));
+        state.language_combo = CreateChildControl(
+            hwnd,
+            L"COMBOBOX",
+            L"",
+            WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            kLanguageComboId,
+            inner_x + label_width + gap,
+            y + ScaleForDpi(64, dpi),
+            ScaleForDpi(150, dpi),
+            ScaleForDpi(120, dpi));
+        if (state.language_combo != nullptr) {
+            SendMessageW(state.language_combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.language_auto));
+            SendMessageW(state.language_combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.language_chinese));
+            SendMessageW(state.language_combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.language_english));
+            SendMessageW(state.language_combo, CB_SETCURSEL, static_cast<WPARAM>(LanguageModeToComboIndex(language_mode_)), 0);
+        }
+
+        y += ScaleForDpi(124, dpi);
+        CreateChildControl(hwnd, L"BUTTON", text.group_file_locations, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(158, dpi));
         const int row_x = inner_x;
         const int first_row_y = y + ScaleForDpi(32, dpi);
         const int row_step = ScaleForDpi(40, dpi);
-        CreatePathRow(hwnd, row_x, first_row_y, label_width, path_edit_width, open_width, copy_width, gap, L"状态 JSON", StatusPath(), L"打开 JSON", kOpenJsonButtonId, kCopyJsonButtonId);
-        CreatePathRow(hwnd, row_x, first_row_y + row_step, label_width, path_edit_width, open_width, copy_width, gap, L"诊断日志", LogPath(), L"打开日志", kOpenLogButtonId, kCopyLogButtonId);
-        CreatePathRow(hwnd, row_x, first_row_y + row_step * 2, label_width, path_edit_width, open_width, copy_width, gap, L"采集脚本", CollectorScriptPath(), L"打开脚本", kOpenScriptButtonId, kCopyScriptButtonId);
+        CreatePathRow(hwnd, row_x, first_row_y, label_width, path_edit_width, open_width, copy_width, gap, text.label_status_json, StatusPath(), text.button_open_json, kOpenJsonButtonId, kCopyJsonButtonId);
+        CreatePathRow(hwnd, row_x, first_row_y + row_step, label_width, path_edit_width, open_width, copy_width, gap, text.label_diagnostic_log, LogPath(), text.button_open_log, kOpenLogButtonId, kCopyLogButtonId);
+        CreatePathRow(hwnd, row_x, first_row_y + row_step * 2, label_width, path_edit_width, open_width, copy_width, gap, text.label_collector_script, CollectorScriptPath(), text.button_open_script, kOpenScriptButtonId, kCopyScriptButtonId);
 
         y += ScaleForDpi(170, dpi);
-        CreateChildControl(hwnd, L"BUTTON", L"当前状态", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(64, dpi));
-        CreateChildControl(hwnd, L"STATIC", L"状态", 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
+        CreateChildControl(hwnd, L"BUTTON", text.group_current_status, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(64, dpi));
+        CreateChildControl(hwnd, L"STATIC", text.label_status, 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
         state.status_text = CreateChildControl(hwnd, L"STATIC", L"", 0, 0, -1, inner_x + label_width + gap, y + ScaleForDpi(31, dpi), content_width - ScaleForDpi(28, dpi) - label_width - gap, ScaleForDpi(22, dpi));
         SetOptionsStatusText(state);
 
         y += ScaleForDpi(82, dpi);
-        const int close_width = ScaleForDpi(78, dpi);
-        const int refresh_width = ScaleForDpi(94, dpi);
-        const int save_width = ScaleForDpi(112, dpi);
+        const int close_width = ScaleForDpi(86, dpi);
+        const int refresh_width = ScaleForDpi(112, dpi);
+        const int save_width = ScaleForDpi(132, dpi);
         const int button_height = ScaleForDpi(30, dpi);
         const int close_x = group_x + content_width - close_width;
         const int refresh_x = close_x - gap - refresh_width;
         const int save_x = refresh_x - gap - save_width;
-        CreateChildControl(hwnd, L"BUTTON", L"保存并刷新", WS_TABSTOP | BS_DEFPUSHBUTTON, 0, IDOK, save_x, y, save_width, button_height);
-        CreateChildControl(hwnd, L"BUTTON", L"立即刷新", WS_TABSTOP | BS_PUSHBUTTON, 0, kRefreshButtonId, refresh_x, y, refresh_width, button_height);
-        CreateChildControl(hwnd, L"BUTTON", L"关闭", WS_TABSTOP | BS_PUSHBUTTON, 0, IDCANCEL, close_x, y, close_width, button_height);
+        CreateChildControl(hwnd, L"BUTTON", text.button_save_refresh, WS_TABSTOP | BS_DEFPUSHBUTTON, 0, IDOK, save_x, y, save_width, button_height);
+        CreateChildControl(hwnd, L"BUTTON", text.button_refresh_now, WS_TABSTOP | BS_PUSHBUTTON, 0, kRefreshButtonId, refresh_x, y, refresh_width, button_height);
+        CreateChildControl(hwnd, L"BUTTON", text.button_close, WS_TABSTOP | BS_PUSHBUTTON, 0, IDCANCEL, close_x, y, close_width, button_height);
     }
 
     void CopyPathToClipboard(HWND hwnd, const std::wstring& path)
     {
         if (CopyTextToClipboard(hwnd, path)) {
-            Notify(L"路径已复制到剪贴板");
+            Notify(Text().notify_path_copied);
             return;
         }
-        MessageBoxW(hwnd, L"复制路径失败，请手动选中文本复制。", L"Codex Usage", MB_OK | MB_ICONWARNING);
+        MessageBoxW(hwnd, Text().copy_failed_message, L"Codex Usage", MB_OK | MB_ICONWARNING);
     }
 
     void OpenExistingTextFile(HWND hwnd, const std::wstring& path, const wchar_t* label)
     {
         if (!FileExists(path)) {
-            std::wstring message = L"未找到";
+            std::wstring message = Text().not_found_prefix;
             message += label;
             message += L": ";
             message += path;
@@ -1041,13 +1361,18 @@ private:
             GetWindowTextW(state.interval_edit, buffer, static_cast<int>(sizeof(buffer) / sizeof(buffer[0])));
             auto parsed = ParseRefreshIntervalSeconds(buffer);
             if (!parsed) {
-                std::wstring message = L"请输入 " + std::to_wstring(kMinRefreshIntervalSeconds) + L"-" + std::to_wstring(kMaxRefreshIntervalSeconds) + L" 之间的刷新间隔秒数。";
+                std::wstring message = std::wstring(Text().refresh_interval_validation_prefix) + std::to_wstring(kMinRefreshIntervalSeconds) + L"-" + std::to_wstring(kMaxRefreshIntervalSeconds) + Text().refresh_interval_validation_suffix;
                 MessageBoxW(hwnd, message.c_str(), L"Codex Usage", MB_OK | MB_ICONWARNING);
                 SetFocus(state.interval_edit);
                 return true;
             }
 
             refresh_interval_seconds_ = *parsed;
+            if (state.language_combo != nullptr) {
+                int selected = static_cast<int>(SendMessageW(state.language_combo, CB_GETCURSEL, 0, 0));
+                language_mode_ = LanguageModeFromComboIndex(selected);
+                UpdateItemTexts();
+            }
             SaveSettings();
             last_collector_launch_tick_ = 0;
             LaunchCollector(true, true);
@@ -1063,7 +1388,7 @@ private:
             LaunchCollector(true, true);
             LoadSnapshot();
             SetOptionsStatusText(state);
-            MessageBoxW(hwnd, L"Codex 用量已刷新。", L"Codex Usage", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(hwnd, Text().refresh_done_message, L"Codex Usage", MB_OK | MB_ICONINFORMATION);
             return true;
         case kOpenJsonButtonId:
             OpenTextFile(StatusPath());
@@ -1072,7 +1397,7 @@ private:
             OpenTextFile(LogPath());
             return true;
         case kOpenScriptButtonId:
-            OpenExistingTextFile(hwnd, CollectorScriptPath(), L"采集脚本");
+            OpenExistingTextFile(hwnd, CollectorScriptPath(), Text().label_collector_script);
             return true;
         case kCopyJsonButtonId:
             CopyPathToClipboard(hwnd, StatusPath());
@@ -1110,12 +1435,12 @@ private:
         state.plugin = this;
         const int dpi = OptionsDpi();
         const int window_width = ScaleForDpi(820, dpi);
-        const int window_height = ScaleForDpi(430, dpi);
+        const int window_height = ScaleForDpi(470, dpi);
 
         HWND hwnd = CreateWindowExW(
             WS_EX_DLGMODALFRAME,
             class_name,
-            L"Codex Usage 选项",
+            Text().options_title,
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -1265,9 +1590,9 @@ private:
 
         std::wstring script = CollectorScriptPath();
         if (!FileExists(script)) {
-            std::wstring message = L"未找到采集脚本: " + script;
+            std::wstring message = std::wstring(Text().missing_collector_script_prefix) + script;
             WriteLog(message);
-            WriteStatusSnapshot(L"error", message, L"脚本缺失");
+            WriteStatusSnapshot(L"error", message, Text().reset_script_missing);
             return false;
         }
 
@@ -1276,7 +1601,7 @@ private:
         EnsureDirectory(DirectoryName(output_path));
 
         if (!FileExists(output_path))
-            WriteStatusSnapshot(L"collecting", L"正在生成 Codex 用量快照", L"采集中");
+            WriteStatusSnapshot(L"collecting", Text().collecting_message, Text().reset_collecting);
 
         std::wstring powershell = PowerShellPath();
         std::wstring command = QuoteArg(powershell);
@@ -1286,6 +1611,8 @@ private:
         command += QuoteArg(output_path);
         command += L" -LogPath ";
         command += QuoteArg(log_path);
+        command += L" -Language ";
+        command += QuoteArg(LanguageArgument(CurrentLanguage()));
 
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
@@ -1293,7 +1620,7 @@ private:
         startup.wShowWindow = SW_HIDE;
         PROCESS_INFORMATION process{};
 
-        WriteLog(L"启动采集: " + command);
+        WriteLog(std::wstring(Text().log_start_collector) + command);
         std::vector<wchar_t> mutable_command(command.begin(), command.end());
         mutable_command.push_back(L'\0');
         if (CreateProcessW(nullptr, mutable_command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, GetModuleDirectory().c_str(), &startup, &process)) {
@@ -1301,13 +1628,13 @@ private:
             if (wait) {
                 DWORD wait_result = WaitForSingleObject(process.hProcess, 15000);
                 if (wait_result == WAIT_OBJECT_0 && GetExitCodeProcess(process.hProcess, &exit_code)) {
-                    WriteLog(L"采集进程退出: " + std::to_wstring(exit_code));
+                    WriteLog(std::wstring(Text().log_collector_exit) + std::to_wstring(exit_code));
                 } else if (wait_result == WAIT_TIMEOUT) {
-                    WriteLog(L"采集进程仍在运行，已超过 15 秒等待窗口");
-                    Notify(L"Codex Usage 采集仍在运行，请稍后查看");
+                    WriteLog(Text().log_collector_timeout);
+                    Notify(Text().collector_running_notify);
                 } else {
                     DWORD error = GetLastError();
-                    WriteLog(L"等待采集进程失败: " + FormatLastError(error));
+                    WriteLog(std::wstring(Text().log_collector_wait_failed) + FormatLastError(error));
                 }
             }
             CloseHandle(process.hThread);
@@ -1317,9 +1644,9 @@ private:
         }
 
         DWORD error = GetLastError();
-        std::wstring message = L"启动 PowerShell 采集失败: " + FormatLastError(error);
+        std::wstring message = std::wstring(Text().powershell_launch_failed_prefix) + FormatLastError(error);
         WriteLog(message);
-        WriteStatusSnapshot(L"error", message, L"启动失败");
+        WriteStatusSnapshot(L"error", message, Text().reset_launch_failed);
         Notify(message);
         return false;
     }
@@ -1331,9 +1658,9 @@ private:
         auto content = ReadFileUtf8(path);
         if (!content) {
             UsageSnapshot waiting;
-            waiting.message = FileExists(CollectorScriptPath()) ? L"正在生成 Codex 用量快照" : L"未找到采集脚本或状态 JSON";
-            waiting.reset_display = L"采集中";
-            waiting.tooltip = BuildTooltip(waiting);
+            waiting.message = FileExists(CollectorScriptPath()) ? Text().waiting_for_collection : Text().missing_script_or_status;
+            waiting.reset_display = Text().reset_collecting;
+            waiting.tooltip = BuildTooltip(waiting, CurrentLanguage());
             snapshot_ = waiting;
             return;
         }
@@ -1358,7 +1685,7 @@ private:
         if (auto value = RemainingPercentFromJson(json, "weekly_remaining_percent", "weekly_used_percent"))
             next.weekly_graph = static_cast<float>(std::max(0.0, std::min(1.0, *value / 100.0)));
 
-        next.tooltip = BuildTooltip(next);
+        next.tooltip = BuildTooltip(next, CurrentLanguage());
 
         snapshot_ = next;
     }
@@ -1370,6 +1697,7 @@ private:
     ITrafficMonitor* app_{};
     bool settings_loaded_{};
     int refresh_interval_seconds_{kDefaultRefreshIntervalSeconds};
+    LanguageMode language_mode_{LanguageMode::Auto};
     ULONGLONG last_collector_launch_tick_{};
 };
 

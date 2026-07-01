@@ -145,6 +145,42 @@ class ResetCreditsCollectorTest(unittest.TestCase):
         self.assertIn("凭证失效", snapshot["reset_credits_message"])
         self.assertEqual(snapshot["reset_credits_tooltip"], "")
 
+    def test_snapshot_can_render_reset_credit_tooltip_in_english(self):
+        collector = load_collector_module()
+        fixed_now = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc).astimezone()
+        collector.local_now = lambda: fixed_now
+        collector.find_today_tokens_from_logs = lambda codex_home, now: (12345, "test.tokens", 1)
+        collector.find_latest_rate_limits = lambda codex_home: None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir)
+            (codex_home / "auth.json").write_text(
+                json.dumps({"tokens": {"access_token": "secret-access-token"}}),
+                encoding="utf-8",
+            )
+
+            def fake_fetch_reset_credits_response(access_token, timeout_seconds):
+                return {
+                    "available_count": 1,
+                    "credits": [
+                        {
+                            "status": "available",
+                            "title": "Full reset (Weekly + 5 hr)",
+                            "granted_at": "2026-06-18T00:47:25Z",
+                            "expires_at": "2026-07-18T00:47:25Z",
+                        }
+                    ],
+                }
+
+            collector.fetch_reset_credits_response = fake_fetch_reset_credits_response
+
+            snapshot = collector.build_snapshot(codex_home, language="en-US")
+
+        self.assertEqual(snapshot["reset_credits_message"], "OK")
+        self.assertIn("Reset credits: 1 available", snapshot["reset_credits_tooltip"])
+        self.assertIn("Granted " + local_text("2026-06-18T00:47:25Z"), snapshot["reset_credits_tooltip"])
+        self.assertIn("Expires " + local_text("2026-07-18T00:47:25Z"), snapshot["reset_credits_tooltip"])
+
 
 class ResetCreditsTooltipWiringTest(unittest.TestCase):
     def test_plugin_appends_reset_credit_tooltip_only_when_present(self):

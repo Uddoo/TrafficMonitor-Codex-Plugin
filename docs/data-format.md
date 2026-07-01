@@ -8,7 +8,9 @@ plugin config directory, and the DLL uses:
 ```
 
 Set `CODEX_TRAFFICMONITOR_USAGE_JSON` to force a different path. The bundled
-collector writes the same file.
+collector writes the same file. Human-facing display fields such as `message`,
+`reset_display`, and `reset_credits_tooltip` are localized according to the
+plugin language setting; the sample below uses Chinese.
 
 ```json
 {
@@ -72,9 +74,11 @@ remaining percentage before writing this snapshot. Both used and remaining
 numeric fields are preserved for compatibility.
 
 When the newest rate-limit event is older than 6 hours, the collector marks the
-snapshot as `stale` and appends `旧` to quota display text. The reset display
-still shows the last recorded reset timestamps, prefixed with `旧:`, for example
-`旧: 5h 06-23 19:05 / 周 06-25 09:12`.
+snapshot as `stale` and appends a localized stale suffix to quota display text
+(`旧` in Chinese, `stale` in English). The reset display still shows the last
+recorded reset timestamps, prefixed with localized stale text, for example
+`旧: 5h 06-23 19:05 / 周 06-25 09:12` or
+`Stale: 5h 06-23 19:05 / wk 06-25 09:12`.
 
 `reset_credits*` fields come from `%USERPROFILE%\.codex\auth.json`
 `tokens.access_token` plus the ChatGPT reset-credit endpoint. They are omitted

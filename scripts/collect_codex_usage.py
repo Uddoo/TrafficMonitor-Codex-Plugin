@@ -330,6 +330,155 @@ def candidate_state_dbs(codex_home: Path) -> list[Path]:
     ]
 
 
+def iso_timestamp_to_epoch_milliseconds(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+        return int(datetime.fromisoformat(normalized).timestamp() * 1000)
+    except ValueError:
+        return None
+
+
+def normalize_rollout_path(codex_home: Path, value: Any) -> Path | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.startswith("\\\\?\\"):
+        text = text[4:]
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        path = codex_home / path
+    return path
+
+
+def token_usage_totals(payload: dict[str, Any]) -> dict[str, int]:
+    info = payload.get("info") or {}
+    usage = info.get("total_token_usage") or {}
+
+    def token_int(key: str) -> int:
+        try:
+            return int(usage.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "input": token_int("input_tokens"),
+        "output": token_int("output_tokens"),
+        "cached": token_int("cached_input_tokens"),
+    }
+
+
+def scan_rollout_token_usage(
+    path: Path,
+    start_ms: int,
+    end_ms: int,
+    created_ms: int | None,
+) -> tuple[dict[str, int] | None, int]:
+    if not path.exists():
+        return None, 0
+
+    baseline: dict[str, int] | None = None
+    latest: dict[str, int] | None = None
+    event_count = 0
+    try:
+        with path.open("rb") as handle:
+            for raw_line in handle:
+                line = raw_line.decode("utf-8", errors="replace")
+                if '"token_count"' not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                payload = obj.get("payload") or {}
+                if payload.get("type") != "token_count":
+                    continue
+                event_ms = iso_timestamp_to_epoch_milliseconds(obj.get("timestamp"))
+                if event_ms is None or event_ms < start_ms or event_ms >= end_ms:
+                    continue
+                event_count += 1
+                totals = token_usage_totals(payload)
+                if baseline is None:
+                    baseline = {"input": 0, "output": 0, "cached": 0}
+                    if created_ms is None or created_ms < start_ms:
+                        baseline = totals
+                latest = totals
+    except OSError:
+        return None, event_count
+
+    if latest is None or baseline is None:
+        return None, event_count
+    return {
+        "input": max(0, latest["input"] - baseline["input"]),
+        "output": max(0, latest["output"] - baseline["output"]),
+        "cached": max(0, latest["cached"] - baseline["cached"]),
+    }, event_count
+
+
+def find_today_token_breakdown_from_rollouts(codex_home: Path, day: datetime) -> tuple[dict[str, int] | None, str, int]:
+    start = datetime(day.year, day.month, day.day, tzinfo=day.tzinfo)
+    end = start + timedelta(days=1)
+    start_ms = int(start.timestamp() * 1000)
+    end_ms = int(end.timestamp() * 1000)
+    best_updated = -1
+    best_result: tuple[dict[str, int] | None, str, int] = (None, "rollouts:no_state_db", 0)
+
+    for db in candidate_state_dbs(codex_home):
+        if not db.exists():
+            continue
+        try:
+            con = sqlite_connect_ro(db)
+            try:
+                max_updated = con.execute("select coalesce(max(updated_at), 0) from threads").fetchone()[0] or 0
+                rows = con.execute(
+                    """
+                    select id, rollout_path, created_at_ms, created_at, updated_at_ms, updated_at
+                    from threads
+                    where coalesce(updated_at_ms, updated_at * 1000) >= ?
+                      and coalesce(updated_at_ms, updated_at * 1000) < ?
+                    """,
+                    (start_ms, end_ms),
+                ).fetchall()
+            finally:
+                con.close()
+        except sqlite3.Error:
+            continue
+
+        if max_updated < best_updated:
+            continue
+        best_updated = max_updated
+        totals = {"input": 0, "output": 0, "cached": 0}
+        threads_with_tokens = 0
+        for _thread_id, rollout_path, created_at_ms, created_at, _updated_at_ms, _updated_at in rows:
+            path = normalize_rollout_path(codex_home, rollout_path)
+            if path is None:
+                continue
+            try:
+                created_ms = int(created_at_ms) if created_at_ms is not None else None
+            except (TypeError, ValueError):
+                created_ms = None
+            if created_ms is None and created_at is not None:
+                try:
+                    created_ms = int(created_at) * 1000
+                except (TypeError, ValueError):
+                    created_ms = None
+            breakdown, _event_count = scan_rollout_token_usage(path, start_ms, end_ms, created_ms)
+            if breakdown is None:
+                continue
+            threads_with_tokens += 1
+            for key in totals:
+                totals[key] += int(breakdown.get(key) or 0)
+
+        if threads_with_tokens > 0:
+            best_result = (totals, "rollouts.token_count", threads_with_tokens)
+        else:
+            best_result = (None, "rollouts:no_token_count", 0)
+    return best_result
+
+
 def normalize_session_limit(limit: dict[str, Any]) -> dict[str, Any] | None:
     normalized = dict(limit)
     if "used_percent" not in normalized and "remaining_percent" in normalized:
@@ -591,9 +740,13 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
     generated_at = now.isoformat(timespec="seconds")
     reset_credits = collect_reset_credits(codex_home)
 
-    tokens, token_source, token_count = find_today_tokens_from_logs(codex_home, now)
-    if tokens is None:
-        tokens, token_source, token_count = find_today_tokens_from_state(codex_home, now)
+    token_breakdown, token_source, token_count = find_today_token_breakdown_from_rollouts(codex_home, now)
+    if token_breakdown is not None:
+        tokens = token_breakdown["input"] + token_breakdown["output"]
+    else:
+        tokens, token_source, token_count = find_today_tokens_from_logs(codex_home, now)
+        if tokens is None:
+            tokens, token_source, token_count = find_today_tokens_from_state(codex_home, now)
 
     event = find_latest_rate_limits(codex_home)
     status = "ok"
@@ -646,6 +799,21 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
     else:
         today_tokens_display = format_tokens(tokens)
 
+    if token_breakdown is None:
+        today_input_tokens = None
+        today_output_tokens = None
+        today_cached_input_tokens = None
+        today_input_tokens_display = "--"
+        today_output_tokens_display = "--"
+        today_cached_input_tokens_display = "--"
+    else:
+        today_input_tokens = token_breakdown["input"]
+        today_output_tokens = token_breakdown["output"]
+        today_cached_input_tokens = token_breakdown["cached"]
+        today_input_tokens_display = format_tokens(today_input_tokens)
+        today_output_tokens_display = format_tokens(today_output_tokens)
+        today_cached_input_tokens_display = format_tokens(today_cached_input_tokens)
+
     message = "；".join(messages) if messages else "正常"
     snapshot = {
         "schema_version": 1,
@@ -668,6 +836,12 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
         "today_tokens_display": today_tokens_display,
         "today_token_source": token_source,
         "today_token_rows": token_count,
+        "today_input_tokens": today_input_tokens,
+        "today_input_tokens_display": today_input_tokens_display,
+        "today_output_tokens": today_output_tokens,
+        "today_output_tokens_display": today_output_tokens_display,
+        "today_cached_input_tokens": today_cached_input_tokens,
+        "today_cached_input_tokens_display": today_cached_input_tokens_display,
     }
     snapshot.update(reset_credits)
     return snapshot

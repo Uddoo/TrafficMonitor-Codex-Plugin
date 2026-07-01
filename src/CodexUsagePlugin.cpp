@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <cwchar>
 #include <cwctype>
 #include <optional>
@@ -31,8 +32,11 @@ constexpr int kMaxRefreshIntervalSeconds = 3600;
 constexpr int kIntervalEditId = 1101;
 constexpr int kOpenJsonButtonId = 1102;
 constexpr int kOpenLogButtonId = 1103;
-constexpr int kOpenDirButtonId = 1104;
+constexpr int kOpenScriptButtonId = 1104;
 constexpr int kRefreshButtonId = 1105;
+constexpr int kCopyJsonButtonId = 1106;
+constexpr int kCopyLogButtonId = 1107;
+constexpr int kCopyScriptButtonId = 1108;
 constexpr int kQuotaBarHeight = 4;
 constexpr int kQuotaBarWidth = 36;
 constexpr int kQuotaValueGap = 3;
@@ -366,6 +370,13 @@ void ApplyDefaultFont(HWND hwnd)
     SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 }
 
+int ScaleForDpi(int value, int dpi)
+{
+    if (dpi <= 0)
+        dpi = 96;
+    return MulDiv(value, dpi, 96);
+}
+
 HWND CreateChildControl(
     HWND parent,
     const wchar_t* class_name,
@@ -394,6 +405,39 @@ HWND CreateChildControl(
     if (control != nullptr)
         ApplyDefaultFont(control);
     return control;
+}
+
+bool CopyTextToClipboard(HWND owner, const std::wstring& text)
+{
+    if (!OpenClipboard(owner))
+        return false;
+
+    EmptyClipboard();
+    const size_t byte_count = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, byte_count);
+    if (memory == nullptr) {
+        CloseClipboard();
+        return false;
+    }
+
+    void* buffer = GlobalLock(memory);
+    if (buffer == nullptr) {
+        GlobalFree(memory);
+        CloseClipboard();
+        return false;
+    }
+
+    std::memcpy(buffer, text.c_str(), byte_count);
+    GlobalUnlock(memory);
+
+    if (SetClipboardData(CF_UNICODETEXT, memory) == nullptr) {
+        GlobalFree(memory);
+        CloseClipboard();
+        return false;
+    }
+
+    CloseClipboard();
+    return true;
 }
 
 void CenterWindowOnParent(HWND window, HWND parent)
@@ -587,6 +631,9 @@ struct UsageSnapshot {
     std::wstring generated_at_local = L"--";
     std::wstring plan_type = L"--";
     std::wstring rate_source = L"--";
+    std::wstring today_input_tokens_display = L"--";
+    std::wstring today_output_tokens_display = L"--";
+    std::wstring today_cached_input_tokens_display = L"--";
     std::wstring reset_credits_tooltip;
     float five_hour_graph = 0.0f;
     float weekly_graph = 0.0f;
@@ -599,8 +646,15 @@ std::wstring BuildTooltip(const UsageSnapshot& snapshot)
         FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display) +
         FormatTooltipLine(L"周剩余额度", snapshot.weekly_display) +
         FormatTooltipLine(L"重置", snapshot.reset_display);
-    if (!snapshot.reset_credits_tooltip.empty())
+    tooltip +=
+        L"\r\nToken 明细\r\n" +
+        FormatTooltipLine(L"Input", snapshot.today_input_tokens_display) +
+        FormatTooltipLine(L"Output", snapshot.today_output_tokens_display) +
+        FormatTooltipLine(L"Cached", snapshot.today_cached_input_tokens_display);
+    if (!snapshot.reset_credits_tooltip.empty()) {
+        tooltip += L"\r\n";
         tooltip += snapshot.reset_credits_tooltip;
+    }
     return tooltip;
 }
 
@@ -663,7 +717,7 @@ public:
         case TMI_DESCRIPTION: return L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间";
         case TMI_AUTHOR: return L"Codex";
         case TMI_COPYRIGHT: return L"MIT; PluginInterface.h Copyright (C) by Zhong Yang";
-        case TMI_VERSION: return L"0.1.3";
+        case TMI_VERSION: return L"0.1.4";
         case TMI_URL: return L"https://github.com/zhongyang219/TrafficMonitor/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97";
         default: return L"";
         }
@@ -763,6 +817,7 @@ private:
     struct OptionsDialogState {
         CodexUsagePlugin* plugin{};
         HWND interval_edit{};
+        HWND status_text{};
         bool saved{};
     };
 
@@ -832,14 +887,86 @@ private:
         return DefWindowProcW(hwnd, message, w_param, l_param);
     }
 
+    int OptionsDpi() const
+    {
+        if (app_ != nullptr) {
+            int dpi = app_->GetDPI(ITrafficMonitor::DPI_MAIN_WND);
+            if (dpi > 0)
+                return dpi;
+        }
+        return 96;
+    }
+
+    void CreatePathRow(
+        HWND hwnd,
+        int x,
+        int y,
+        int label_width,
+        int edit_width,
+        int open_width,
+        int copy_width,
+        int gap,
+        const std::wstring& label,
+        const std::wstring& path,
+        const std::wstring& open_text,
+        int open_id,
+        int copy_id)
+    {
+        CreateChildControl(hwnd, L"STATIC", label, 0, 0, -1, x, y + ScaleForDpi(5, OptionsDpi()), label_width, ScaleForDpi(22, OptionsDpi()));
+        HWND path_edit = CreateChildControl(
+            hwnd,
+            L"EDIT",
+            path,
+            WS_TABSTOP | ES_READONLY | ES_AUTOHSCROLL | WS_BORDER,
+            WS_EX_CLIENTEDGE,
+            -1,
+            x + label_width + gap,
+            y,
+            edit_width,
+            ScaleForDpi(25, OptionsDpi()));
+        if (path_edit != nullptr) {
+            SendMessageW(path_edit, EM_SETSEL, static_cast<WPARAM>(path.size()), static_cast<LPARAM>(path.size()));
+            SendMessageW(path_edit, EM_SCROLLCARET, 0, 0);
+        }
+
+        int open_x = x + label_width + gap + edit_width + gap;
+        int copy_x = open_x + open_width + gap;
+        CreateChildControl(hwnd, L"BUTTON", open_text, WS_TABSTOP | BS_PUSHBUTTON, 0, open_id, open_x, y - ScaleForDpi(1, OptionsDpi()), open_width, ScaleForDpi(28, OptionsDpi()));
+        CreateChildControl(hwnd, L"BUTTON", L"复制", WS_TABSTOP | BS_PUSHBUTTON, 0, copy_id, copy_x, y - ScaleForDpi(1, OptionsDpi()), copy_width, ScaleForDpi(28, OptionsDpi()));
+    }
+
+    std::wstring OptionsStatusText() const
+    {
+        std::wstring status = snapshot_.status.empty() ? L"--" : snapshot_.status;
+        if (!snapshot_.generated_at_local.empty() && snapshot_.generated_at_local != L"--")
+            status += L"    更新时间: " + snapshot_.generated_at_local;
+        if (!snapshot_.message.empty())
+            status += L"    " + snapshot_.message;
+        return status;
+    }
+
+    void SetOptionsStatusText(OptionsDialogState& state)
+    {
+        if (state.status_text != nullptr)
+            SetWindowTextW(state.status_text, OptionsStatusText().c_str());
+    }
+
     void CreateOptionsControls(HWND hwnd, OptionsDialogState& state)
     {
-        const int margin = 14;
-        int y = 16;
-        const int label_width = 150;
-        const int full_width = 560;
+        const int dpi = OptionsDpi();
+        const int margin = ScaleForDpi(18, dpi);
+        const int content_width = ScaleForDpi(760, dpi);
+        const int group_x = margin;
+        const int inner_x = margin + ScaleForDpi(14, dpi);
+        const int gap = ScaleForDpi(8, dpi);
+        const int label_width = ScaleForDpi(80, dpi);
+        const int open_width = ScaleForDpi(76, dpi);
+        const int copy_width = ScaleForDpi(58, dpi);
+        const int path_edit_width = content_width - ScaleForDpi(28, dpi) - label_width - gap - open_width - gap - copy_width;
 
-        CreateChildControl(hwnd, L"STATIC", L"刷新时间间隔（秒，10-3600）:", 0, 0, -1, margin, y + 4, label_width + 40, 22);
+        int y = ScaleForDpi(14, dpi);
+        CreateChildControl(hwnd, L"BUTTON", L"刷新设置", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(74, dpi));
+        CreateChildControl(hwnd, L"STATIC", L"刷新间隔", 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
         state.interval_edit = CreateChildControl(
             hwnd,
             L"EDIT",
@@ -847,34 +974,63 @@ private:
             WS_TABSTOP | ES_AUTOHSCROLL | WS_BORDER,
             WS_EX_CLIENTEDGE,
             kIntervalEditId,
-            margin + label_width + 50,
-            y,
-            90,
-            24);
+            inner_x + label_width + gap,
+            y + ScaleForDpi(27, dpi),
+            ScaleForDpi(76, dpi),
+            ScaleForDpi(25, dpi));
+        CreateChildControl(hwnd, L"STATIC", L"秒", 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(84, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(28, dpi), ScaleForDpi(22, dpi));
+        CreateChildControl(hwnd, L"STATIC", L"范围 10-3600，保存后立即刷新一次", 0, 0, -1, inner_x + label_width + gap + ScaleForDpi(120, dpi), y + ScaleForDpi(31, dpi), ScaleForDpi(420, dpi), ScaleForDpi(22, dpi));
 
-        y += 40;
-        CreateChildControl(hwnd, L"STATIC", L"状态 JSON:", 0, 0, -1, margin, y, label_width, 20);
-        CreateChildControl(hwnd, L"EDIT", StatusPath(), ES_READONLY | ES_AUTOHSCROLL | WS_BORDER, WS_EX_CLIENTEDGE, -1, margin, y + 22, full_width, 24);
+        y += ScaleForDpi(86, dpi);
+        CreateChildControl(hwnd, L"BUTTON", L"文件位置", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(158, dpi));
+        const int row_x = inner_x;
+        const int first_row_y = y + ScaleForDpi(32, dpi);
+        const int row_step = ScaleForDpi(40, dpi);
+        CreatePathRow(hwnd, row_x, first_row_y, label_width, path_edit_width, open_width, copy_width, gap, L"状态 JSON", StatusPath(), L"打开 JSON", kOpenJsonButtonId, kCopyJsonButtonId);
+        CreatePathRow(hwnd, row_x, first_row_y + row_step, label_width, path_edit_width, open_width, copy_width, gap, L"诊断日志", LogPath(), L"打开日志", kOpenLogButtonId, kCopyLogButtonId);
+        CreatePathRow(hwnd, row_x, first_row_y + row_step * 2, label_width, path_edit_width, open_width, copy_width, gap, L"采集脚本", CollectorScriptPath(), L"打开脚本", kOpenScriptButtonId, kCopyScriptButtonId);
 
-        y += 58;
-        CreateChildControl(hwnd, L"STATIC", L"诊断日志:", 0, 0, -1, margin, y, label_width, 20);
-        CreateChildControl(hwnd, L"EDIT", LogPath(), ES_READONLY | ES_AUTOHSCROLL | WS_BORDER, WS_EX_CLIENTEDGE, -1, margin, y + 22, full_width, 24);
+        y += ScaleForDpi(170, dpi);
+        CreateChildControl(hwnd, L"BUTTON", L"当前状态", BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(64, dpi));
+        CreateChildControl(hwnd, L"STATIC", L"状态", 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
+        state.status_text = CreateChildControl(hwnd, L"STATIC", L"", 0, 0, -1, inner_x + label_width + gap, y + ScaleForDpi(31, dpi), content_width - ScaleForDpi(28, dpi) - label_width - gap, ScaleForDpi(22, dpi));
+        SetOptionsStatusText(state);
 
-        y += 58;
-        CreateChildControl(hwnd, L"STATIC", L"采集脚本:", 0, 0, -1, margin, y, label_width, 20);
-        CreateChildControl(hwnd, L"EDIT", CollectorScriptPath(), ES_READONLY | ES_AUTOHSCROLL | WS_BORDER, WS_EX_CLIENTEDGE, -1, margin, y + 22, full_width, 24);
+        y += ScaleForDpi(82, dpi);
+        const int close_width = ScaleForDpi(78, dpi);
+        const int refresh_width = ScaleForDpi(94, dpi);
+        const int save_width = ScaleForDpi(112, dpi);
+        const int button_height = ScaleForDpi(30, dpi);
+        const int close_x = group_x + content_width - close_width;
+        const int refresh_x = close_x - gap - refresh_width;
+        const int save_x = refresh_x - gap - save_width;
+        CreateChildControl(hwnd, L"BUTTON", L"保存并刷新", WS_TABSTOP | BS_DEFPUSHBUTTON, 0, IDOK, save_x, y, save_width, button_height);
+        CreateChildControl(hwnd, L"BUTTON", L"立即刷新", WS_TABSTOP | BS_PUSHBUTTON, 0, kRefreshButtonId, refresh_x, y, refresh_width, button_height);
+        CreateChildControl(hwnd, L"BUTTON", L"关闭", WS_TABSTOP | BS_PUSHBUTTON, 0, IDCANCEL, close_x, y, close_width, button_height);
+    }
 
-        y += 62;
-        std::wstring status = L"当前状态: " + snapshot_.status;
-        CreateChildControl(hwnd, L"STATIC", status, 0, 0, -1, margin, y, full_width, 22);
+    void CopyPathToClipboard(HWND hwnd, const std::wstring& path)
+    {
+        if (CopyTextToClipboard(hwnd, path)) {
+            Notify(L"路径已复制到剪贴板");
+            return;
+        }
+        MessageBoxW(hwnd, L"复制路径失败，请手动选中文本复制。", L"Codex Usage", MB_OK | MB_ICONWARNING);
+    }
 
-        y += 42;
-        CreateChildControl(hwnd, L"BUTTON", L"保存并刷新", WS_TABSTOP | BS_DEFPUSHBUTTON, 0, IDOK, margin, y, 104, 30);
-        CreateChildControl(hwnd, L"BUTTON", L"立即刷新", WS_TABSTOP | BS_PUSHBUTTON, 0, kRefreshButtonId, margin + 112, y, 88, 30);
-        CreateChildControl(hwnd, L"BUTTON", L"打开 JSON", WS_TABSTOP | BS_PUSHBUTTON, 0, kOpenJsonButtonId, margin + 208, y, 88, 30);
-        CreateChildControl(hwnd, L"BUTTON", L"打开日志", WS_TABSTOP | BS_PUSHBUTTON, 0, kOpenLogButtonId, margin + 304, y, 88, 30);
-        CreateChildControl(hwnd, L"BUTTON", L"打开目录", WS_TABSTOP | BS_PUSHBUTTON, 0, kOpenDirButtonId, margin + 400, y, 88, 30);
-        CreateChildControl(hwnd, L"BUTTON", L"取消", WS_TABSTOP | BS_PUSHBUTTON, 0, IDCANCEL, margin + 496, y, 78, 30);
+    void OpenExistingTextFile(HWND hwnd, const std::wstring& path, const wchar_t* label)
+    {
+        if (!FileExists(path)) {
+            std::wstring message = L"未找到";
+            message += label;
+            message += L": ";
+            message += path;
+            MessageBoxW(hwnd, message.c_str(), L"Codex Usage", MB_OK | MB_ICONWARNING);
+            return;
+        }
+
+        std::wstring params = QuoteArg(path);
+        ShellExecuteW(hwnd, L"open", L"notepad.exe", params.c_str(), nullptr, SW_SHOWNORMAL);
     }
 
     bool HandleOptionsCommand(HWND hwnd, OptionsDialogState& state, int command_id)
@@ -906,6 +1062,7 @@ private:
         case kRefreshButtonId:
             LaunchCollector(true, true);
             LoadSnapshot();
+            SetOptionsStatusText(state);
             MessageBoxW(hwnd, L"Codex 用量已刷新。", L"Codex Usage", MB_OK | MB_ICONINFORMATION);
             return true;
         case kOpenJsonButtonId:
@@ -914,9 +1071,17 @@ private:
         case kOpenLogButtonId:
             OpenTextFile(LogPath());
             return true;
-        case kOpenDirButtonId:
-            EnsureDirectory(DirectoryName(StatusPath()));
-            ShellExecuteW(hwnd, L"open", DirectoryName(StatusPath()).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        case kOpenScriptButtonId:
+            OpenExistingTextFile(hwnd, CollectorScriptPath(), L"采集脚本");
+            return true;
+        case kCopyJsonButtonId:
+            CopyPathToClipboard(hwnd, StatusPath());
+            return true;
+        case kCopyLogButtonId:
+            CopyPathToClipboard(hwnd, LogPath());
+            return true;
+        case kCopyScriptButtonId:
+            CopyPathToClipboard(hwnd, CollectorScriptPath());
             return true;
         default:
             return false;
@@ -943,6 +1108,9 @@ private:
 
         OptionsDialogState state{};
         state.plugin = this;
+        const int dpi = OptionsDpi();
+        const int window_width = ScaleForDpi(820, dpi);
+        const int window_height = ScaleForDpi(430, dpi);
 
         HWND hwnd = CreateWindowExW(
             WS_EX_DLGMODALFRAME,
@@ -951,8 +1119,8 @@ private:
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            610,
-            360,
+            window_width,
+            window_height,
             parent,
             nullptr,
             g_module,
@@ -1051,6 +1219,9 @@ private:
              << "  \"weekly_remaining_percent\": null,\n"
              << "  \"reset_display\": \"" << JsonEscapeUtf8(reset_display) << "\",\n"
              << "  \"today_tokens_display\": \"--\",\n"
+             << "  \"today_input_tokens_display\": \"--\",\n"
+             << "  \"today_output_tokens_display\": \"--\",\n"
+             << "  \"today_cached_input_tokens_display\": \"--\",\n"
              << "  \"rate_limits_source\": \"plugin\",\n"
              << "  \"today_token_source\": \"plugin\",\n"
              << "  \"reset_credits_status\": \"error\",\n"
@@ -1177,6 +1348,9 @@ private:
         next.generated_at_local = ExtractJsonString(json, "generated_at_local", L"--");
         next.plan_type = ExtractJsonString(json, "plan_type", L"--");
         next.rate_source = ExtractJsonString(json, "rate_limits_source", L"--");
+        next.today_input_tokens_display = ExtractJsonString(json, "today_input_tokens_display", L"--");
+        next.today_output_tokens_display = ExtractJsonString(json, "today_output_tokens_display", L"--");
+        next.today_cached_input_tokens_display = ExtractJsonString(json, "today_cached_input_tokens_display", L"--");
         next.reset_credits_tooltip = ExtractJsonString(json, "reset_credits_tooltip", L"");
 
         if (auto value = RemainingPercentFromJson(json, "five_hour_remaining_percent", "five_hour_used_percent"))

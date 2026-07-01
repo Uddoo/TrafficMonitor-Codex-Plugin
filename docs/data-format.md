@@ -26,10 +26,16 @@ collector writes the same file.
   "weekly_used_percent": 70,
   "weekly_remaining_percent": 30,
   "reset_display": "5h 19:05 / 周 06-25 09:12",
-  "today_tokens": 123456,
-  "today_tokens_display": "123K",
-  "today_token_source": "logs.post_sampling",
-  "today_token_rows": 8,
+  "today_tokens": 2780,
+  "today_tokens_display": "2.8K",
+  "today_token_source": "rollouts.token_count",
+  "today_token_rows": 1,
+  "today_input_tokens": 2500,
+  "today_input_tokens_display": "2.5K",
+  "today_output_tokens": 280,
+  "today_output_tokens_display": "280",
+  "today_cached_input_tokens": 1100,
+  "today_cached_input_tokens_display": "1.1K",
   "reset_credits_status": "ok",
   "reset_credits_message": "正常",
   "reset_credits_available_count": 2,
@@ -51,8 +57,11 @@ collector writes the same file.
 }
 ```
 
-`today_tokens*` fields are kept for collector/backward compatibility only. The
-TrafficMonitor plugin UI does not display the local Token estimate.
+`today_input_tokens*`, `today_output_tokens*`, and
+`today_cached_input_tokens*` come from rollout JSONL
+`token_count.info.total_token_usage` when available and are displayed in the
+TrafficMonitor tooltip. `today_tokens*` remains for backward compatibility and
+uses `input + output` for rollout-backed snapshots.
 
 `primary.window_minutes=300` from Codex session JSONL `rate_limits` or legacy
 `codex.rate_limits` logs is treated as the 5-hour quota.

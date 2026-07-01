@@ -1,6 +1,6 @@
 # TrafficMonitor Codex Usage Plugin
 
-用于在 TrafficMonitor 中显示 Codex 的 5 小时额度和周额度；重置时间放在鼠标悬停提示框中。
+用于在 TrafficMonitor 中显示 Codex 的 5 小时额度和周额度；重置时间与今日 Token 明细放在鼠标悬停提示框中。
 
 实现参考了 TrafficMonitor 官方插件开发指南和官方插件示例：插件 DLL 导出 `TMPluginGetInstance`，主程序周期性调用 `DataRequired()`，显示项通过 `IPluginItem` 返回文本。
 
@@ -8,7 +8,7 @@
 
 - `5h`: Codex 300 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
 - `周`: Codex 10080 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
-鼠标移动到 TrafficMonitor 上时，提示框显示 5 小时/周剩余额度和重置时间；如果本机能查到 Codex 额度重置卡，也会追加可用数量、获取时间和过期时间。
+鼠标移动到 TrafficMonitor 上时，提示框显示 5 小时/周剩余额度、重置时间，以及今日 `Input` / `Output` / `Cached` Token 明细；如果本机能查到 Codex 额度重置卡，也会追加可用数量、获取时间和过期时间。
 
 双击任一显示项，或在插件命令里选择“立即刷新 Codex 用量”，会触发一次后台采集。
 
@@ -18,7 +18,7 @@
 - 打开 Codex Usage 配置目录
 - 打开 Codex Usage 诊断日志
 
-“插件选项”会显示当前状态文件、日志文件、采集脚本路径，并可设置刷新时间间隔。刷新时间间隔单位为秒，允许范围是 `10-3600`，保存后会立即刷新一次。
+“插件选项”会显示当前状态文件、日志文件、采集脚本路径，并可就近打开或复制这些路径；也可设置刷新时间间隔。刷新时间间隔单位为秒，允许范围是 `10-3600`，保存后会立即刷新一次。
 
 ## 数据来源
 
@@ -32,7 +32,7 @@
 
 额度优先来自 session JSONL 中 `event_msg` / `token_count` 携带的 `rate_limits`；如果新格式不可用，再回退到日志中的 `codex.rate_limits` websocket 事件。`primary.window_minutes=300` 作为 5 小时额度，`secondary.window_minutes=10080` 作为周额度。若本地 payload 只提供 `used_percent`，采集脚本会换算出剩余百分比；快照中会同时保留 used 和 remaining 两种数值。
 
-采集 JSON 中为兼容旧版本仍可能保留本机 Token 估算字段，但插件界面不再显示该估算值。
+今日 Token 明细优先来自 `state_5.sqlite` 中记录的 rollout 路径，并读取 rollout JSONL 里的 `token_count.info.total_token_usage`，按本机当天增量统计 `Input`、`Output`、`Cached`。若 rollout 统计不可用，采集 JSON 中仍会保留旧日志/线程汇总字段作为兼容数据。
 
 为了显示 Codex 额度重置卡，采集脚本会读取 `%USERPROFILE%\.codex\auth.json` 中的 `tokens.access_token`，并用 `Authorization: Bearer ...` 请求 `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`。状态 JSON 和 tooltip 只保留 `available_count` 以及每张卡的 `status`、`title`、本机时区下的获取时间和过期时间；不会写出 access token、refresh token、cookie 或完整唯一 ID。若 auth 缺失、401 或请求失败，则不显示重置卡区域。
 

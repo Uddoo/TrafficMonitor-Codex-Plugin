@@ -26,6 +26,87 @@ def local_text(utc_text):
 
 
 class ResetCreditsCollectorTest(unittest.TestCase):
+    def test_snapshot_skips_reset_credits_when_disabled(self):
+        collector = load_collector_module()
+        fixed_now = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc).astimezone()
+        collector.local_now = lambda: fixed_now
+        collector.find_today_tokens_from_logs = lambda codex_home, now: (12345, "test.tokens", 1)
+        collector.find_latest_rate_limits = lambda codex_home: None
+
+        def unexpected_fetch(access_token, timeout_seconds):
+            raise AssertionError("reset credits should not be fetched when disabled")
+
+        collector.fetch_reset_credits_response = unexpected_fetch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir)
+            (codex_home / "auth.json").write_text(
+                json.dumps({"tokens": {"access_token": "secret-access-token"}}),
+                encoding="utf-8",
+            )
+
+            snapshot = collector.build_snapshot(codex_home, reset_credits_mode="disabled")
+
+        self.assertEqual(snapshot["reset_credits_status"], "disabled")
+        self.assertIsNone(snapshot["reset_credits_available_count"])
+        self.assertEqual(snapshot["reset_credits"], [])
+        self.assertEqual(snapshot["reset_credits_tooltip"], "")
+
+    def test_snapshot_reuses_fresh_reset_credit_cache_without_network(self):
+        collector = load_collector_module()
+        fixed_now = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc).astimezone()
+        collector.local_now = lambda: fixed_now
+        collector.find_today_tokens_from_logs = lambda codex_home, now: (12345, "test.tokens", 1)
+        collector.find_latest_rate_limits = lambda codex_home: None
+        calls = {"count": 0}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir)
+            cache_path = codex_home / "trafficmonitor" / "reset_credits_cache.json"
+            (codex_home / "auth.json").write_text(
+                json.dumps({"tokens": {"access_token": "secret-access-token"}}),
+                encoding="utf-8",
+            )
+
+            def first_fetch(access_token, timeout_seconds):
+                calls["count"] += 1
+                return {
+                    "available_count": 1,
+                    "credits": [
+                        {
+                            "status": "available",
+                            "title": "Full reset (Weekly + 5 hr)",
+                            "granted_at": "2026-06-18T00:47:25Z",
+                            "expires_at": "2026-07-18T00:47:25Z",
+                        }
+                    ],
+                }
+
+            collector.fetch_reset_credits_response = first_fetch
+            first = collector.build_snapshot(
+                codex_home,
+                reset_credits_mode="enabled",
+                reset_credits_cache_path=cache_path,
+                reset_credits_cache_ttl_seconds=3600,
+            )
+
+            def second_fetch(access_token, timeout_seconds):
+                raise AssertionError("fresh reset credit cache should avoid network")
+
+            collector.fetch_reset_credits_response = second_fetch
+            second = collector.build_snapshot(
+                codex_home,
+                reset_credits_mode="enabled",
+                reset_credits_cache_path=cache_path,
+                reset_credits_cache_ttl_seconds=3600,
+            )
+
+        self.assertEqual(calls["count"], 1)
+        self.assertEqual(first["reset_credits_available_count"], 1)
+        self.assertEqual(second["reset_credits_available_count"], 1)
+        self.assertEqual(second["reset_credits_status"], "ok")
+        self.assertIn("重置卡: 1 张可用", second["reset_credits_tooltip"])
+
     def test_snapshot_adds_sanitized_reset_credit_tooltip_when_auth_token_exists(self):
         collector = load_collector_module()
         fixed_now = datetime(2026, 7, 1, 9, 0, tzinfo=timezone.utc).astimezone()
@@ -190,6 +271,16 @@ class ResetCreditsTooltipWiringTest(unittest.TestCase):
         self.assertIn('ExtractJsonString(json, "reset_credits_tooltip", L"")', source)
         self.assertIn("if (!snapshot.reset_credits_tooltip.empty())", source)
         self.assertIn("tooltip += snapshot.reset_credits_tooltip;", source)
+
+    def test_plugin_exposes_reset_credit_setting_and_passes_it_to_collector(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("kResetCreditsCheckboxId", source)
+        self.assertIn("reset_credits_enabled_", source)
+        self.assertIn('L"reset_credits_enabled"', source)
+        self.assertIn("-ResetCreditsMode", source)
+        self.assertIn("reset-credit cache", readme)
 
 
 if __name__ == "__main__":

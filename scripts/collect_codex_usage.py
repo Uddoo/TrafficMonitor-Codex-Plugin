@@ -22,6 +22,7 @@ MAX_SESSION_JSONL_BYTES = 25 * 1024 * 1024
 MAX_SESSION_JSONL_FILES = 300
 RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 RESET_CREDITS_TIMEOUT_SECONDS = 6.0
+RESET_CREDITS_CACHE_TTL_SECONDS = 60 * 60
 UNIQUE_ID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 DEFAULT_LANGUAGE = "zh-CN"
 
@@ -82,6 +83,12 @@ class RateLimitEvent:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class SessionJsonlCandidate:
+    path: Path
+    mtime: float
+
+
 class ResetCreditsUnauthorizedError(Exception):
     pass
 
@@ -134,6 +141,77 @@ def default_reset_credits_snapshot(status: str = "not_found", message: str = "")
         "reset_credits": [],
         "reset_credits_tooltip": "",
     }
+
+
+def default_reset_credits_cache_path(codex_home: Path) -> Path:
+    return codex_home / "trafficmonitor" / "reset_credits_cache.json"
+
+
+def reset_credits_snapshot_from_cache(cache_payload: dict[str, Any], language: str) -> dict[str, Any] | None:
+    if cache_payload.get("schema_version") != 1:
+        return None
+    available_count_raw = cache_payload.get("reset_credits_available_count")
+    try:
+        available_count = int(available_count_raw)
+    except (TypeError, ValueError):
+        available_count = None
+
+    raw_credits = cache_payload.get("reset_credits")
+    if not isinstance(raw_credits, list):
+        return None
+    credits: list[dict[str, str]] = []
+    for item in raw_credits:
+        if not isinstance(item, dict):
+            continue
+        credits.append(
+            {
+                "status": str(item.get("status") or "--"),
+                "title": str(item.get("title") or "--"),
+                "granted_at": str(item.get("granted_at") or "--"),
+                "expires_at": str(item.get("expires_at") or "--"),
+            }
+        )
+    if available_count is None:
+        available_count = len([credit for credit in credits if credit["status"] == "available"]) if credits else None
+
+    return {
+        "reset_credits_status": "ok",
+        "reset_credits_message": localized_text(language, "ok"),
+        "reset_credits_available_count": available_count,
+        "reset_credits": credits,
+        "reset_credits_tooltip": build_reset_credits_tooltip(available_count, credits, language),
+    }
+
+
+def read_fresh_reset_credits_cache(path: Path, ttl_seconds: int, language: str) -> dict[str, Any] | None:
+    if ttl_seconds <= 0:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        cached_at = float(payload.get("cached_at_epoch"))
+    except (TypeError, ValueError):
+        return None
+    if local_now().timestamp() - cached_at > ttl_seconds:
+        return None
+    return reset_credits_snapshot_from_cache(payload, language)
+
+
+def write_reset_credits_cache(path: Path, snapshot: dict[str, Any]) -> None:
+    payload = {
+        "schema_version": 1,
+        "cached_at_epoch": int(local_now().timestamp()),
+        "reset_credits_available_count": snapshot.get("reset_credits_available_count"),
+        "reset_credits": snapshot.get("reset_credits") if isinstance(snapshot.get("reset_credits"), list) else [],
+    }
+    try:
+        write_json_atomic(path, payload)
+    except OSError:
+        pass
 
 
 def read_codex_access_token(codex_home: Path) -> str | None:
@@ -247,7 +325,21 @@ def build_reset_credits_tooltip(
     return "\r\n".join(lines) + "\r\n"
 
 
-def collect_reset_credits(codex_home: Path, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
+def collect_reset_credits(
+    codex_home: Path,
+    language: str = DEFAULT_LANGUAGE,
+    mode: str = "enabled",
+    cache_path: Path | None = None,
+    cache_ttl_seconds: int = RESET_CREDITS_CACHE_TTL_SECONDS,
+) -> dict[str, Any]:
+    if mode != "enabled":
+        return default_reset_credits_snapshot("disabled")
+
+    cache_path = cache_path or default_reset_credits_cache_path(codex_home)
+    cached = read_fresh_reset_credits_cache(cache_path, cache_ttl_seconds, language)
+    if cached is not None:
+        return cached
+
     access_token = read_codex_access_token(codex_home)
     if access_token is None:
         return default_reset_credits_snapshot("missing_auth")
@@ -271,13 +363,15 @@ def collect_reset_credits(codex_home: Path, language: str = DEFAULT_LANGUAGE) ->
     except (TypeError, ValueError):
         available_count = len([credit for credit in credits if credit["status"] == "available"]) if credits else None
 
-    return {
+    snapshot = {
         "reset_credits_status": "ok",
         "reset_credits_message": localized_text(language, "ok"),
         "reset_credits_available_count": available_count,
         "reset_credits": credits,
         "reset_credits_tooltip": build_reset_credits_tooltip(available_count, credits, language),
     }
+    write_reset_credits_cache(cache_path, snapshot)
+    return snapshot
 
 
 def format_dt_relative_to(dt: datetime | None, now: datetime) -> str:
@@ -440,6 +534,7 @@ def scan_rollout_token_usage(
 
     baseline: dict[str, int] | None = None
     latest: dict[str, int] | None = None
+    latest_before_start: dict[str, int] | None = None
     event_count = 0
     try:
         with path.open("rb") as handle:
@@ -455,14 +550,17 @@ def scan_rollout_token_usage(
                 if payload.get("type") != "token_count":
                     continue
                 event_ms = iso_timestamp_to_epoch_milliseconds(obj.get("timestamp"))
-                if event_ms is None or event_ms < start_ms or event_ms >= end_ms:
+                if event_ms is None or event_ms >= end_ms:
+                    continue
+                totals = token_usage_totals(payload)
+                if event_ms < start_ms:
+                    latest_before_start = totals
                     continue
                 event_count += 1
-                totals = token_usage_totals(payload)
                 if baseline is None:
                     baseline = {"input": 0, "output": 0, "cached": 0}
                     if created_ms is None or created_ms < start_ms:
-                        baseline = totals
+                        baseline = latest_before_start or totals
                 latest = totals
     except OSError:
         return None, event_count
@@ -589,24 +687,36 @@ def session_rate_limit_payload(obj: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def candidate_session_jsonl_files(codex_home: Path) -> list[Path]:
+def candidate_session_jsonl_files(codex_home: Path) -> list[SessionJsonlCandidate]:
     sessions_dir = codex_home / "sessions"
     if not sessions_dir.exists():
         return []
-    files: list[Path] = []
+    files: list[SessionJsonlCandidate] = []
     for path in sessions_dir.rglob("*.jsonl"):
         try:
-            if path.is_file() and path.stat().st_size <= MAX_SESSION_JSONL_BYTES:
-                files.append(path)
+            stat = path.stat()
+            if path.is_file() and stat.st_size <= MAX_SESSION_JSONL_BYTES:
+                files.append(SessionJsonlCandidate(path=path, mtime=stat.st_mtime))
         except OSError:
             continue
-    files.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)
+    files.sort(key=lambda candidate: candidate.mtime, reverse=True)
     return files[:MAX_SESSION_JSONL_FILES]
 
 
 def find_latest_rate_limits_from_sessions(codex_home: Path) -> RateLimitEvent | None:
     best: RateLimitEvent | None = None
-    for path in candidate_session_jsonl_files(codex_home):
+    for candidate in candidate_session_jsonl_files(codex_home):
+        if isinstance(candidate, SessionJsonlCandidate):
+            path = candidate.path
+            mtime = candidate.mtime
+        else:
+            path = candidate
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                mtime = 0
+        if best is not None and mtime <= best.ts:
+            break
         try:
             with path.open("r", encoding="utf-8", errors="ignore") as handle:
                 for line in handle:
@@ -798,11 +908,23 @@ def quota_percent_display(
     return f"{remaining_int}%{suffix}", used_int, remaining_int
 
 
-def build_snapshot(codex_home: Path, language: str = DEFAULT_LANGUAGE) -> dict[str, Any]:
+def build_snapshot(
+    codex_home: Path,
+    language: str = DEFAULT_LANGUAGE,
+    reset_credits_mode: str = "enabled",
+    reset_credits_cache_path: Path | None = None,
+    reset_credits_cache_ttl_seconds: int = RESET_CREDITS_CACHE_TTL_SECONDS,
+) -> dict[str, Any]:
     language = normalize_language(language)
     now = local_now()
     generated_at = now.isoformat(timespec="seconds")
-    reset_credits = collect_reset_credits(codex_home, language)
+    reset_credits = collect_reset_credits(
+        codex_home,
+        language,
+        mode=reset_credits_mode,
+        cache_path=reset_credits_cache_path,
+        cache_ttl_seconds=reset_credits_cache_ttl_seconds,
+    )
 
     token_breakdown, token_source, token_count = find_today_token_breakdown_from_rollouts(codex_home, now)
     if token_breakdown is not None:
@@ -947,14 +1069,24 @@ def main() -> int:
     parser.add_argument("--codex-home", default=None)
     parser.add_argument("--output", default=None)
     parser.add_argument("--language", default=DEFAULT_LANGUAGE, choices=["zh-CN", "en-US", "auto"])
+    parser.add_argument("--reset-credits-mode", default="enabled", choices=["enabled", "disabled"])
+    parser.add_argument("--reset-credits-cache", default=None)
+    parser.add_argument("--reset-credits-cache-ttl-seconds", default=RESET_CREDITS_CACHE_TTL_SECONDS, type=int)
     args = parser.parse_args()
 
     codex_home = Path(args.codex_home).expanduser() if args.codex_home else default_codex_home()
     output = Path(args.output).expanduser() if args.output else default_output_path(codex_home)
     language = normalize_language(args.language)
+    reset_credits_cache = Path(args.reset_credits_cache).expanduser() if args.reset_credits_cache else None
 
     try:
-        payload = build_snapshot(codex_home, language)
+        payload = build_snapshot(
+            codex_home,
+            language,
+            reset_credits_mode=args.reset_credits_mode,
+            reset_credits_cache_path=reset_credits_cache,
+            reset_credits_cache_ttl_seconds=args.reset_credits_cache_ttl_seconds,
+        )
     except Exception as exc:  # noqa: BLE001 - this is a background status writer.
         payload = {
             "schema_version": 1,

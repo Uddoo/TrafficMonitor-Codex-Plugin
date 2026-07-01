@@ -41,6 +41,29 @@ def write_token_event(path, timestamp, input_tokens, output_tokens, cached_token
 
 
 class RolloutTokenBreakdownTest(unittest.TestCase):
+    def test_existing_thread_uses_last_pre_midnight_token_count_as_today_baseline(self):
+        collector = load_collector_module()
+        day = datetime(2026, 7, 1, 12, 0, tzinfo=timezone(timedelta(hours=8)))
+        start = datetime(day.year, day.month, day.day, tzinfo=day.tzinfo)
+        start_ms = int(start.timestamp() * 1000)
+        end_ms = int((start + timedelta(days=1)).timestamp() * 1000)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            rollout_path = Path(temp_dir) / "thread-before-midnight.jsonl"
+            write_token_event(rollout_path, "2026-06-30T23:50:00+08:00", 900, 90, 300)
+            write_token_event(rollout_path, "2026-07-01T00:30:00+08:00", 1_000, 120, 350)
+            write_token_event(rollout_path, "2026-07-01T11:30:00+08:00", 1_500, 190, 500)
+
+            breakdown, event_count = collector.scan_rollout_token_usage(
+                rollout_path,
+                start_ms,
+                end_ms,
+                created_ms=start_ms - 60_000,
+            )
+
+        self.assertEqual(event_count, 2)
+        self.assertEqual(breakdown, {"input": 600, "output": 100, "cached": 200})
+
     def test_snapshot_uses_rollout_token_count_breakdown(self):
         collector = load_collector_module()
         fixed_now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone(timedelta(hours=8)))

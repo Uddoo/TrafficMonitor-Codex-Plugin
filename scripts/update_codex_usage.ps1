@@ -4,7 +4,9 @@ param(
     [string]$CodexHome,
     [string]$LogPath,
     [ValidateSet('zh-CN', 'en-US', 'auto')]
-    [string]$Language = 'zh-CN'
+    [string]$Language = 'zh-CN',
+    [ValidateSet('enabled', 'disabled')]
+    [string]$ResetCreditsMode = 'enabled'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,7 +109,7 @@ if (-not $LogPath) {
     $LogPath = Join-Path (Split-Path -Parent $OutputPath) 'codex_usage_plugin.log'
 }
 
-Write-PluginLog "update_codex_usage.ps1 start OutputPath=$OutputPath CodexHome=$CodexHome Language=$Language"
+Write-PluginLog "update_codex_usage.ps1 start OutputPath=$OutputPath CodexHome=$CodexHome Language=$Language ResetCreditsMode=$ResetCreditsMode"
 
 $collector = Join-Path $PSScriptRoot 'collect_codex_usage.py'
 if (-not (Test-Path -LiteralPath $collector)) {
@@ -119,7 +121,7 @@ if (-not (Test-Path -LiteralPath $collector)) {
 $pythonOverride = $env:CODEX_TRAFFICMONITOR_PYTHON
 if ($pythonOverride -and (Test-Path -LiteralPath $pythonOverride)) {
     Write-PluginLog "using CODEX_TRAFFICMONITOR_PYTHON=$pythonOverride"
-    & $pythonOverride $collector --codex-home $CodexHome --output $OutputPath --language $Language
+    & $pythonOverride $collector --codex-home $CodexHome --output $OutputPath --language $Language --reset-credits-mode $ResetCreditsMode
     Write-PluginLog "python exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }
@@ -127,7 +129,7 @@ if ($pythonOverride -and (Test-Path -LiteralPath $pythonOverride)) {
 $python = Get-Command python -ErrorAction SilentlyContinue
 if ($python) {
     Write-PluginLog "using python=$($python.Source)"
-    & $python.Source $collector --codex-home $CodexHome --output $OutputPath --language $Language
+    & $python.Source $collector --codex-home $CodexHome --output $OutputPath --language $Language --reset-credits-mode $ResetCreditsMode
     Write-PluginLog "python exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }
@@ -135,7 +137,7 @@ if ($python) {
 $py = Get-Command py -ErrorAction SilentlyContinue
 if ($py) {
     Write-PluginLog "using py=$($py.Source)"
-    & $py.Source -3 $collector --codex-home $CodexHome --output $OutputPath --language $Language
+    & $py.Source -3 $collector --codex-home $CodexHome --output $OutputPath --language $Language --reset-credits-mode $ResetCreditsMode
     Write-PluginLog "py exit code: $LASTEXITCODE"
     exit $LASTEXITCODE
 }

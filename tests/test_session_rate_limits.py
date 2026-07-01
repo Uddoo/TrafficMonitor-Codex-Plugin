@@ -1,8 +1,9 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import unittest
 
@@ -60,8 +61,51 @@ class SessionRateLimitsTest(unittest.TestCase):
             self.assertEqual(event.payload["plan_type"], "prolite")
             self.assertEqual(event.payload["rate_limits"]["primary"]["used_percent"], 92)
             self.assertEqual(event.payload["rate_limits"]["primary"]["reset_at"], 1782818694)
-            self.assertEqual(event.payload["rate_limits"]["secondary"]["used_percent"], 26)
-            self.assertEqual(event.payload["rate_limits"]["secondary"]["reset_at"], 1783389180)
+        self.assertEqual(event.payload["rate_limits"]["secondary"]["used_percent"], 26)
+        self.assertEqual(event.payload["rate_limits"]["secondary"]["reset_at"], 1783389180)
+
+    def test_session_scan_stops_before_opening_files_older_than_best_event(self):
+        collector = load_collector_module()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir)
+            newest = codex_home / "newest.jsonl"
+            older = codex_home / "older.jsonl"
+            newest_payload = {
+                "timestamp": "2026-07-01T10:00:00+00:00",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "rate_limits": {
+                        "primary": {
+                            "remaining_percent": 50,
+                            "window_minutes": 300,
+                            "resets_at": 1782921600,
+                        }
+                    },
+                },
+            }
+            newest.write_text(json.dumps(newest_payload) + "\n", encoding="utf-8")
+            older.write_text("this file should not be opened\n", encoding="utf-8")
+            newest_ts = int(datetime(2026, 7, 1, 10, 0, tzinfo=timezone.utc).timestamp())
+            os.utime(newest, (newest_ts, newest_ts))
+            os.utime(older, (newest_ts - 3600, newest_ts - 3600))
+
+            collector.candidate_session_jsonl_files = lambda codex_home: [newest, older]
+            original_open = Path.open
+
+            def guarded_open(self, *args, **kwargs):
+                if self == older:
+                    raise AssertionError("older session file should not be opened")
+                return original_open(self, *args, **kwargs)
+
+            Path.open = guarded_open
+            try:
+                event = collector.find_latest_rate_limits_from_sessions(codex_home)
+            finally:
+                Path.open = original_open
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.ts, newest_ts)
 
     def test_snapshot_redacts_unique_ids_from_rate_limit_source(self):
         collector = load_collector_module()

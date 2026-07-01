@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(TrafficMonitorCodexUsage LANGUAGES CXX)
 
+enable_testing()
+
 add_library(CodexUsage SHARED
     src/CodexUsagePlugin.cpp
 )
@@ -16,3 +18,12 @@ add_custom_command(TARGET CodexUsage POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/scripts
             $<TARGET_FILE_DIR:CodexUsage>/scripts
 )
+
+add_executable(CodexUsageJsonParserSmoke
+    tests/cpp/json_parser_smoke.cpp
+)
+target_include_directories(CodexUsageJsonParserSmoke PRIVATE include)
+target_compile_features(CodexUsageJsonParserSmoke PRIVATE cxx_std_17)
+target_compile_definitions(CodexUsageJsonParserSmoke PRIVATE CODEX_USAGE_PLUGIN_TEST UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(CodexUsageJsonParserSmoke PRIVATE Shell32 User32 Gdi32)
+add_test(NAME CodexUsageJsonParserSmoke COMMAND CodexUsageJsonParserSmoke)

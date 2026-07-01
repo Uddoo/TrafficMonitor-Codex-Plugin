@@ -37,6 +37,7 @@ TrafficMonitor 常驻在任务栏或桌面的 Codex 用户。
 - 插件命令可打开状态 JSON、配置目录和诊断日志。
 - “插件选项”可查看/复制状态文件、日志文件、采集脚本路径，并设置刷新时间间隔。
 - “插件选项”可设置语言：`自动`、`中文` 或 `English`；自动模式会跟随 TrafficMonitor 当前语言。
+- “插件选项”可关闭 Codex 重置卡查询；关闭后不会读取 `auth.json` 或请求网络接口。
 - 可显示 Codex 额度重置卡数量和过期时间；敏感 token、cookie、完整唯一 ID 不会写入状态文件。
 
 ### 运行要求
@@ -132,6 +133,7 @@ cmake --build build\cmake-x64 --config Release
 
 - `refresh_interval_seconds`：自动刷新间隔。
 - `language`：`auto`、`zh-CN` 或 `en-US`。
+- `reset_credits_enabled`：是否查询 Codex 重置卡。
 
 ### 数据来源与隐私
 
@@ -159,6 +161,10 @@ websocket 事件。`primary.window_minutes=300` 作为 5 小时额度，
 reset-credit 接口。状态 JSON 和 tooltip 只保留可用数量、状态、标题、获取时间和过期时间；
 不会写出 access token、refresh token、cookie 或完整唯一 ID。若 auth 缺失、401
 或请求失败，则不显示重置卡区域。
+
+重置卡查询可以在插件选项中关闭。开启时采集脚本会使用本地 sanitized reset-credit cache
+缓存安全字段约 1 小时，避免每次 TrafficMonitor 刷新都请求网络；缓存不包含 token、
+cookie 或完整唯一 ID。
 
 ### 常见问题
 
@@ -196,6 +202,23 @@ python -m unittest discover -s tests -v
 
 发布包默认未签名；如果你的 TrafficMonitor 环境要求代码签名，请用本机证书重新构建并签名。
 
+### 本机替换测试
+
+本机 TrafficMonitor 目录通常是：
+
+```text
+D:\03-RequiredSoftware\系统-TrafficMonitor\
+```
+
+替换测试时只复制：
+
+```text
+build\x64\Release\CodexUsage.dll -> <TrafficMonitor>\plugins\CodexUsage.dll
+build\x64\Release\scripts\       -> <TrafficMonitor>\plugins\scripts\
+```
+
+不要覆盖 `<TrafficMonitor>\plugins\CodexUsage\`，它是运行时配置、状态 JSON 和日志目录。
+
 ### 许可证
 
 MIT License。详见 [LICENSE](LICENSE)。
@@ -216,6 +239,7 @@ weekly quota, reset time, today's token breakdown, and optional reset-credit car
 - Refreshes on item double-click or through the plugin command menu.
 - Opens the status JSON, config directory, and diagnostic log from plugin commands.
 - Provides an options dialog for refresh interval, language, and file-path inspection/copying.
+- Lets you disable reset-credit fetching from the options dialog; disabled mode does not read `auth.json` or call the network endpoint.
 - Keeps reset-credit output sanitized; access tokens, refresh tokens, cookies, and full IDs are not written to the status JSON.
 
 ### Requirements
@@ -280,6 +304,7 @@ when available. See [docs/data-format.md](docs/data-format.md) for the status JS
 For reset-credit display, the collector may use the local Codex `auth.json` access token
 to call the ChatGPT reset-credit endpoint. The output is sanitized and omits credentials
 and full unique IDs. If auth is missing or the request fails, the reset-credit section is hidden.
+When enabled, a sanitized reset-credit cache is reused for about one hour to avoid repeated network calls.
 
 ### Development
 
@@ -289,6 +314,11 @@ python -m unittest discover -s tests -v
 
 Pushing a `v*` tag runs GitHub Actions tests, builds the x64 Release DLL, packages the
 DLL plus scripts, and uploads `CodexUsage-TrafficMonitor-x64.zip` to the GitHub Release.
+
+For a local TrafficMonitor smoke test, close TrafficMonitor, replace only
+`plugins\CodexUsage.dll` and `plugins\scripts\` from `build\x64\Release`, then
+restart TrafficMonitor. Do not overwrite `plugins\CodexUsage\`; that directory
+contains runtime config, status JSON, and logs.
 
 ### License
 

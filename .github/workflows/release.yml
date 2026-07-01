@@ -1,17 +1,24 @@
 name: Release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-release:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -29,6 +36,13 @@ jobs:
       - name: Build plugin
         shell: pwsh
         run: .\tools\build.ps1 -Platform x64 -Configuration Release -SkipSign
+
+      - name: Run C++ smoke
+        shell: pwsh
+        run: |
+          cmake -S . -B build\cmake-x64 -A x64
+          cmake --build build\cmake-x64 --config Release --target CodexUsageJsonParserSmoke
+          ctest --test-dir build\cmake-x64 -C Release --output-on-failure
 
       - name: Package plugin
         shell: pwsh

@@ -38,9 +38,30 @@ constexpr int kCopyJsonButtonId = 1106;
 constexpr int kCopyLogButtonId = 1107;
 constexpr int kCopyScriptButtonId = 1108;
 constexpr int kLanguageComboId = 1109;
+constexpr int kResetCreditsCheckboxId = 1110;
 constexpr int kQuotaBarHeight = 4;
 constexpr int kQuotaBarWidth = 36;
 constexpr int kQuotaValueGap = 3;
+
+class CriticalSectionScope {
+public:
+    explicit CriticalSectionScope(CRITICAL_SECTION& section)
+        : section_(section)
+    {
+        EnterCriticalSection(&section_);
+    }
+
+    ~CriticalSectionScope()
+    {
+        LeaveCriticalSection(&section_);
+    }
+
+    CriticalSectionScope(const CriticalSectionScope&) = delete;
+    CriticalSectionScope& operator=(const CriticalSectionScope&) = delete;
+
+private:
+    CRITICAL_SECTION& section_;
+};
 
 enum class UiLanguage {
     Chinese,
@@ -71,6 +92,7 @@ struct LocalizedText {
     const wchar_t* group_refresh_settings;
     const wchar_t* label_refresh_interval;
     const wchar_t* label_language;
+    const wchar_t* label_reset_credits;
     const wchar_t* language_auto;
     const wchar_t* language_chinese;
     const wchar_t* language_english;
@@ -132,6 +154,7 @@ const LocalizedText& TextFor(UiLanguage language)
         L"刷新设置",
         L"刷新间隔",
         L"语言",
+        L"查询 Codex 重置卡",
         L"自动",
         L"中文",
         L"English",
@@ -191,6 +214,7 @@ const LocalizedText& TextFor(UiLanguage language)
         L"Refresh settings",
         L"Refresh interval",
         L"Language",
+        L"Fetch Codex reset credits",
         L"Auto",
         L"Chinese",
         L"English",
@@ -520,67 +544,217 @@ void AppendUtf8File(const std::wstring& path, const std::string& content)
     CloseHandle(file);
 }
 
-std::optional<size_t> FindJsonValueStart(const std::string& json, const std::string& key)
+bool IsJsonWhitespace(char ch)
 {
-    std::string needle = "\"" + key + "\"";
-    size_t key_pos = json.find(needle);
-    if (key_pos == std::string::npos)
-        return std::nullopt;
-    size_t colon = json.find(':', key_pos + needle.size());
-    if (colon == std::string::npos)
-        return std::nullopt;
-    size_t pos = colon + 1;
-    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\r' || json[pos] == '\n'))
+    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+}
+
+size_t SkipJsonWhitespace(const std::string& json, size_t pos)
+{
+    while (pos < json.size() && IsJsonWhitespace(json[pos]))
         ++pos;
+    return pos;
+}
+
+int HexDigitValue(char ch)
+{
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return 10 + ch - 'a';
+    if (ch >= 'A' && ch <= 'F')
+        return 10 + ch - 'A';
+    return -1;
+}
+
+std::optional<unsigned int> ParseJsonUnicodeEscape(const std::string& json, size_t pos)
+{
+    if (pos + 4 > json.size())
+        return std::nullopt;
+    unsigned int value = 0;
+    for (size_t index = 0; index < 4; ++index) {
+        int digit = HexDigitValue(json[pos + index]);
+        if (digit < 0)
+            return std::nullopt;
+        value = (value << 4) | static_cast<unsigned int>(digit);
+    }
+    return value;
+}
+
+void AppendUtf8CodePoint(std::string& output, unsigned int code_point)
+{
+    if (code_point <= 0x7F) {
+        output.push_back(static_cast<char>(code_point));
+    } else if (code_point <= 0x7FF) {
+        output.push_back(static_cast<char>(0xC0 | (code_point >> 6)));
+        output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    } else if (code_point <= 0xFFFF) {
+        output.push_back(static_cast<char>(0xE0 | (code_point >> 12)));
+        output.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    } else if (code_point <= 0x10FFFF) {
+        output.push_back(static_cast<char>(0xF0 | (code_point >> 18)));
+        output.push_back(static_cast<char>(0x80 | ((code_point >> 12) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+    }
+}
+
+std::optional<std::wstring> DecodeJsonStringLiteral(const std::string& json, size_t quote_pos, size_t* end_pos = nullptr)
+{
+    if (quote_pos >= json.size() || json[quote_pos] != '"')
+        return std::nullopt;
+
+    std::string utf8;
+    for (size_t pos = quote_pos + 1; pos < json.size(); ++pos) {
+        char ch = json[pos];
+        if (ch == '"') {
+            if (end_pos != nullptr)
+                *end_pos = pos + 1;
+            return Utf8ToWide(utf8);
+        }
+        if (ch != '\\') {
+            utf8.push_back(ch);
+            continue;
+        }
+
+        if (++pos >= json.size())
+            return std::nullopt;
+        char escaped = json[pos];
+        switch (escaped) {
+        case '"': utf8.push_back('"'); break;
+        case '\\': utf8.push_back('\\'); break;
+        case '/': utf8.push_back('/'); break;
+        case 'b': utf8.push_back('\b'); break;
+        case 'f': utf8.push_back('\f'); break;
+        case 'n': utf8.push_back('\n'); break;
+        case 'r': utf8.push_back('\r'); break;
+        case 't': utf8.push_back('\t'); break;
+        case 'u': {
+            auto high = ParseJsonUnicodeEscape(json, pos + 1);
+            if (!high)
+                return std::nullopt;
+            pos += 4;
+            unsigned int code_point = *high;
+            if (code_point >= 0xD800 && code_point <= 0xDBFF) {
+                if (pos + 6 >= json.size() || json[pos + 1] != '\\' || json[pos + 2] != 'u')
+                    return std::nullopt;
+                auto low = ParseJsonUnicodeEscape(json, pos + 3);
+                if (!low || *low < 0xDC00 || *low > 0xDFFF)
+                    return std::nullopt;
+                code_point = 0x10000 + ((code_point - 0xD800) << 10) + (*low - 0xDC00);
+                pos += 6;
+            } else if (code_point >= 0xDC00 && code_point <= 0xDFFF) {
+                return std::nullopt;
+            }
+            AppendUtf8CodePoint(utf8, code_point);
+            break;
+        }
+        default:
+            return std::nullopt;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<size_t> SkipJsonValue(const std::string& json, size_t pos)
+{
+    pos = SkipJsonWhitespace(json, pos);
     if (pos >= json.size())
         return std::nullopt;
-    return pos;
+
+    bool in_string = false;
+    bool escaped = false;
+    int depth = 0;
+    for (size_t index = pos; index < json.size(); ++index) {
+        char ch = json[index];
+        if (in_string) {
+            if (escaped)
+                escaped = false;
+            else if (ch == '\\')
+                escaped = true;
+            else if (ch == '"')
+                in_string = false;
+            continue;
+        }
+        if (ch == '"') {
+            in_string = true;
+            continue;
+        }
+        if (ch == '{' || ch == '[') {
+            ++depth;
+            continue;
+        }
+        if (ch == '}' || ch == ']') {
+            if (depth == 0)
+                return index;
+            --depth;
+            continue;
+        }
+        if (ch == ',' && depth == 0)
+            return index;
+    }
+    return json.size();
+}
+
+std::optional<size_t> FindTopLevelJsonValueStart(const std::string& json, const std::string& key)
+{
+    size_t pos = SkipJsonWhitespace(json, 0);
+    if (pos >= json.size() || json[pos] != '{')
+        return std::nullopt;
+    ++pos;
+
+    while (pos < json.size()) {
+        pos = SkipJsonWhitespace(json, pos);
+        if (pos < json.size() && json[pos] == '}')
+            return std::nullopt;
+        size_t after_key = 0;
+        auto parsed_key = DecodeJsonStringLiteral(json, pos, &after_key);
+        if (!parsed_key)
+            return std::nullopt;
+        pos = SkipJsonWhitespace(json, after_key);
+        if (pos >= json.size() || json[pos] != ':')
+            return std::nullopt;
+        pos = SkipJsonWhitespace(json, pos + 1);
+        if (WideToUtf8(*parsed_key) == key)
+            return pos;
+
+        auto value_end = SkipJsonValue(json, pos);
+        if (!value_end)
+            return std::nullopt;
+        pos = SkipJsonWhitespace(json, *value_end);
+        if (pos < json.size() && json[pos] == ',') {
+            ++pos;
+            continue;
+        }
+        if (pos < json.size() && json[pos] == '}')
+            return std::nullopt;
+        return std::nullopt;
+    }
+    return std::nullopt;
 }
 
 std::wstring ExtractJsonString(const std::string& json, const std::string& key, const std::wstring& fallback = L"")
 {
-    auto start = FindJsonValueStart(json, key);
+    auto start = FindTopLevelJsonValueStart(json, key);
     if (!start || json[*start] != '"')
         return fallback;
-
-    std::string value;
-    bool escaped = false;
-    for (size_t pos = *start + 1; pos < json.size(); ++pos) {
-        char ch = json[pos];
-        if (escaped) {
-            switch (ch) {
-            case '"': value.push_back('"'); break;
-            case '\\': value.push_back('\\'); break;
-            case '/': value.push_back('/'); break;
-            case 'b': value.push_back('\b'); break;
-            case 'f': value.push_back('\f'); break;
-            case 'n': value.push_back('\n'); break;
-            case 'r': value.push_back('\r'); break;
-            case 't': value.push_back('\t'); break;
-            default: value.push_back(ch); break;
-            }
-            escaped = false;
-            continue;
-        }
-        if (ch == '\\') {
-            escaped = true;
-            continue;
-        }
-        if (ch == '"')
-            return Utf8ToWide(value);
-        value.push_back(ch);
-    }
-    return fallback;
+    auto decoded = DecodeJsonStringLiteral(json, *start);
+    return decoded ? *decoded : fallback;
 }
 
 std::optional<double> ExtractJsonNumber(const std::string& json, const std::string& key)
 {
-    auto start = FindJsonValueStart(json, key);
+    auto start = FindTopLevelJsonValueStart(json, key);
     if (!start)
         return std::nullopt;
     char* end{};
     double value = std::strtod(json.c_str() + *start, &end);
-    if (end == json.c_str() + *start)
+    if (end == json.c_str() + *start || !std::isfinite(value))
+        return std::nullopt;
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')
+        ++end;
+    if (*end != ',' && *end != '}' && *end != ']')
         return std::nullopt;
     return value;
 }
@@ -972,7 +1146,7 @@ public:
         case TMI_DESCRIPTION: return Text().plugin_description;
         case TMI_AUTHOR: return L"Codex";
         case TMI_COPYRIGHT: return L"MIT; PluginInterface.h Copyright (C) by Zhong Yang";
-        case TMI_VERSION: return L"0.1.5";
+        case TMI_VERSION: return L"0.1.6";
         case TMI_URL: return L"https://github.com/zhongyang219/TrafficMonitor/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97";
         default: return L"";
         }
@@ -1069,13 +1243,24 @@ private:
             CodexUsageItem(*this, ItemKind::Weekly, L"Codex 周额度", L"CodexWeeklyQuota", L"周", L"100%")
         }
     {
+        InitializeCriticalSection(&collector_lock_);
         UpdateItemTexts();
+    }
+
+    ~CodexUsagePlugin()
+    {
+        if (collector_process_ != nullptr) {
+            CloseHandle(collector_process_);
+            collector_process_ = nullptr;
+        }
+        DeleteCriticalSection(&collector_lock_);
     }
 
     struct OptionsDialogState {
         CodexUsagePlugin* plugin{};
         HWND interval_edit{};
         HWND language_combo{};
+        HWND reset_credits_checkbox{};
         HWND status_text{};
         bool saved{};
     };
@@ -1135,6 +1320,11 @@ private:
             static_cast<DWORD>(sizeof(language_buffer) / sizeof(language_buffer[0])),
             path.c_str());
         language_mode_ = LanguageModeFromConfig(language_buffer);
+        reset_credits_enabled_ = GetPrivateProfileIntW(
+            L"settings",
+            L"reset_credits_enabled",
+            1,
+            path.c_str()) != 0;
         settings_loaded_ = true;
         UpdateItemTexts();
 
@@ -1150,6 +1340,7 @@ private:
         WritePrivateProfileStringW(L"settings", L"refresh_interval_seconds", value.c_str(), path.c_str());
         std::wstring language = LanguageModeToConfig(language_mode_);
         WritePrivateProfileStringW(L"settings", L"language", language.c_str(), path.c_str());
+        WritePrivateProfileStringW(L"settings", L"reset_credits_enabled", reset_credits_enabled_ ? L"1" : L"0", path.c_str());
     }
 
     ULONGLONG RefreshIntervalMilliseconds()
@@ -1266,7 +1457,7 @@ private:
         const int path_edit_width = content_width - ScaleForDpi(28, dpi) - label_width - gap - open_width - gap - copy_width;
 
         int y = ScaleForDpi(14, dpi);
-        CreateChildControl(hwnd, L"BUTTON", text.group_refresh_settings, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(112, dpi));
+        CreateChildControl(hwnd, L"BUTTON", text.group_refresh_settings, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(148, dpi));
         CreateChildControl(hwnd, L"STATIC", text.label_refresh_interval, 0, 0, -1, inner_x, y + ScaleForDpi(31, dpi), label_width, ScaleForDpi(22, dpi));
         state.interval_edit = CreateChildControl(
             hwnd,
@@ -1301,7 +1492,21 @@ private:
             SendMessageW(state.language_combo, CB_SETCURSEL, static_cast<WPARAM>(LanguageModeToComboIndex(language_mode_)), 0);
         }
 
-        y += ScaleForDpi(124, dpi);
+        state.reset_credits_checkbox = CreateChildControl(
+            hwnd,
+            L"BUTTON",
+            text.label_reset_credits,
+            WS_TABSTOP | BS_AUTOCHECKBOX,
+            0,
+            kResetCreditsCheckboxId,
+            inner_x + label_width + gap,
+            y + ScaleForDpi(98, dpi),
+            ScaleForDpi(260, dpi),
+            ScaleForDpi(24, dpi));
+        if (state.reset_credits_checkbox != nullptr)
+            SendMessageW(state.reset_credits_checkbox, BM_SETCHECK, reset_credits_enabled_ ? BST_CHECKED : BST_UNCHECKED, 0);
+
+        y += ScaleForDpi(160, dpi);
         CreateChildControl(hwnd, L"BUTTON", text.group_file_locations, BS_GROUPBOX, 0, -1, group_x, y, content_width, ScaleForDpi(158, dpi));
         const int row_x = inner_x;
         const int first_row_y = y + ScaleForDpi(32, dpi);
@@ -1373,6 +1578,8 @@ private:
                 language_mode_ = LanguageModeFromComboIndex(selected);
                 UpdateItemTexts();
             }
+            if (state.reset_credits_checkbox != nullptr)
+                reset_credits_enabled_ = SendMessageW(state.reset_credits_checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
             SaveSettings();
             last_collector_launch_tick_ = 0;
             LaunchCollector(true, true);
@@ -1435,7 +1642,7 @@ private:
         state.plugin = this;
         const int dpi = OptionsDpi();
         const int window_width = ScaleForDpi(820, dpi);
-        const int window_height = ScaleForDpi(470, dpi);
+        const int window_height = ScaleForDpi(510, dpi);
 
         HWND hwnd = CreateWindowExW(
             WS_EX_DLGMODALFRAME,
@@ -1581,9 +1788,45 @@ private:
         ShellExecuteW(nullptr, L"open", L"notepad.exe", params.c_str(), nullptr, SW_SHOWNORMAL);
     }
 
+    void CloseCollectorProcessIfFinished()
+    {
+        if (collector_process_ == nullptr)
+            return;
+
+        DWORD wait_result = WaitForSingleObject(collector_process_, 0);
+        if (wait_result != WAIT_OBJECT_0)
+            return;
+
+        DWORD exit_code = 0;
+        if (GetExitCodeProcess(collector_process_, &exit_code))
+            WriteLog(std::wstring(Text().log_collector_exit) + std::to_wstring(exit_code));
+        CloseHandle(collector_process_);
+        collector_process_ = nullptr;
+    }
+
+    bool IsCollectorRunning()
+    {
+        CloseCollectorProcessIfFinished();
+        if (collector_process_ == nullptr)
+            return false;
+        DWORD wait_result = WaitForSingleObject(collector_process_, 0);
+        if (wait_result == WAIT_TIMEOUT)
+            return true;
+        CloseCollectorProcessIfFinished();
+        return collector_process_ != nullptr;
+    }
+
     bool LaunchCollector(bool force, bool wait)
     {
+        CriticalSectionScope collector_guard(collector_lock_);
         LoadSettings();
+        if (IsCollectorRunning()) {
+            WriteLog(Text().collector_running_notify);
+            if (force)
+                Notify(Text().collector_running_notify);
+            return false;
+        }
+
         const ULONGLONG now = GetTickCount64();
         if (!force && last_collector_launch_tick_ != 0 && now - last_collector_launch_tick_ < RefreshIntervalMilliseconds())
             return false;
@@ -1613,6 +1856,8 @@ private:
         command += QuoteArg(log_path);
         command += L" -Language ";
         command += QuoteArg(LanguageArgument(CurrentLanguage()));
+        command += L" -ResetCreditsMode ";
+        command += QuoteArg(reset_credits_enabled_ ? L"enabled" : L"disabled");
 
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
@@ -1624,21 +1869,25 @@ private:
         std::vector<wchar_t> mutable_command(command.begin(), command.end());
         mutable_command.push_back(L'\0');
         if (CreateProcessW(nullptr, mutable_command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, GetModuleDirectory().c_str(), &startup, &process)) {
+            CloseHandle(process.hThread);
+            collector_process_ = process.hProcess;
             DWORD exit_code = STILL_ACTIVE;
             if (wait) {
-                DWORD wait_result = WaitForSingleObject(process.hProcess, 15000);
-                if (wait_result == WAIT_OBJECT_0 && GetExitCodeProcess(process.hProcess, &exit_code)) {
+                DWORD wait_result = WaitForSingleObject(collector_process_, 15000);
+                if (wait_result == WAIT_OBJECT_0 && GetExitCodeProcess(collector_process_, &exit_code)) {
                     WriteLog(std::wstring(Text().log_collector_exit) + std::to_wstring(exit_code));
+                    CloseHandle(collector_process_);
+                    collector_process_ = nullptr;
                 } else if (wait_result == WAIT_TIMEOUT) {
                     WriteLog(Text().log_collector_timeout);
                     Notify(Text().collector_running_notify);
                 } else {
                     DWORD error = GetLastError();
                     WriteLog(std::wstring(Text().log_collector_wait_failed) + FormatLastError(error));
+                    CloseHandle(collector_process_);
+                    collector_process_ = nullptr;
                 }
             }
-            CloseHandle(process.hThread);
-            CloseHandle(process.hProcess);
             last_collector_launch_tick_ = now;
             return true;
         }
@@ -1679,6 +1928,8 @@ private:
         next.today_output_tokens_display = ExtractJsonString(json, "today_output_tokens_display", L"--");
         next.today_cached_input_tokens_display = ExtractJsonString(json, "today_cached_input_tokens_display", L"--");
         next.reset_credits_tooltip = ExtractJsonString(json, "reset_credits_tooltip", L"");
+        if (!reset_credits_enabled_)
+            next.reset_credits_tooltip.clear();
 
         if (auto value = RemainingPercentFromJson(json, "five_hour_remaining_percent", "five_hour_used_percent"))
             next.five_hour_graph = static_cast<float>(std::max(0.0, std::min(1.0, *value / 100.0)));
@@ -1698,7 +1949,10 @@ private:
     bool settings_loaded_{};
     int refresh_interval_seconds_{kDefaultRefreshIntervalSeconds};
     LanguageMode language_mode_{LanguageMode::Auto};
+    bool reset_credits_enabled_{true};
     ULONGLONG last_collector_launch_tick_{};
+    HANDLE collector_process_{};
+    CRITICAL_SECTION collector_lock_{};
 };
 
 const wchar_t* CodexUsageItem::GetItemValueText() const
@@ -1772,6 +2026,7 @@ int CodexUsageItem::OnMouseEvent(MouseEventType type, int, int, void*, int)
 
 } // namespace
 
+#ifndef CODEX_USAGE_PLUGIN_TEST
 extern "C" __declspec(dllexport) ITMPlugin* TMPluginGetInstance()
 {
     return &CodexUsagePlugin::Instance();
@@ -1785,3 +2040,4 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
     }
     return TRUE;
 }
+#endif

@@ -30,6 +30,15 @@ class OptionsDialogLayoutTest(unittest.TestCase):
         self.assertIn("LanguageModeFromConfig", source)
         self.assertIn("CB_ADDSTRING", source)
 
+    def test_options_dialog_exposes_reset_credit_toggle(self):
+        source = (ROOT / "src" / "CodexUsagePlugin.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("kResetCreditsCheckboxId", source)
+        self.assertIn("reset_credits_enabled_", source)
+        self.assertIn("label_reset_credits", source)
+        self.assertIn("BM_SETCHECK", source)
+        self.assertIn("BM_GETCHECK", source)
+
     def test_options_dialog_scales_and_refreshes_visible_status(self):
         source = (ROOT / "src" / "CodexUsagePlugin.cpp").read_text(encoding="utf-8")
 

@@ -87,3 +87,10 @@ request fails. The snapshot only stores the sanitized `available_count` and each
 credit's `status`, `title`, `granted_at`, and `expires_at`; token values,
 cookies, and credit IDs are never written. `granted_at` and `expires_at` are
 display strings converted from UTC into the current computer timezone.
+
+The plugin can disable reset-credit collection through `reset_credits_enabled=0`
+in `codex_usage_plugin.ini`. When disabled, the collector writes stable empty
+`reset_credits*` fields with `reset_credits_status` set to `disabled` and does
+not read `auth.json`. When enabled, the collector may reuse a sanitized local
+cache for about one hour; the cache stores only language-neutral safe fields and
+the tooltip is rebuilt for the current UI language.

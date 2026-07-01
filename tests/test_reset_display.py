@@ -77,7 +77,15 @@ class ResetDisplayTest(unittest.TestCase):
     def test_plugin_metadata_version_matches_release(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('case TMI_VERSION: return L"0.1.5";', source)
+        self.assertIn('case TMI_VERSION: return L"0.1.6";', source)
+
+    def test_plugin_json_parser_decodes_unicode_and_matches_top_level_keys(self):
+        source = SOURCE_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("DecodeJsonStringLiteral", source)
+        self.assertIn("FindTopLevelJsonValueStart", source)
+        self.assertIn("ParseJsonUnicodeEscape", source)
+        self.assertNotIn("std::string needle = \"\\\"\" + key + \"\\\"\";", source)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import json
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import unittest
 
@@ -43,7 +43,7 @@ def write_token_event(path, timestamp, input_tokens, output_tokens, cached_token
 class RolloutTokenBreakdownTest(unittest.TestCase):
     def test_snapshot_uses_rollout_token_count_breakdown(self):
         collector = load_collector_module()
-        fixed_now = datetime(2026, 7, 1, 12, 0).astimezone()
+        fixed_now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone(timedelta(hours=8)))
         collector.local_now = lambda: fixed_now
         collector.find_latest_rate_limits = lambda codex_home: None
 

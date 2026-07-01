@@ -63,7 +63,7 @@ class ResetDisplayTest(unittest.TestCase):
     def test_plugin_metadata_version_matches_release(self):
         source = SOURCE_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('case TMI_VERSION: return L"0.1.2";', source)
+        self.assertIn('case TMI_VERSION: return L"0.1.3";', source)
 
 
 if __name__ == "__main__":

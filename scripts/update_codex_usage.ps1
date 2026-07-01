@@ -36,6 +36,11 @@ function Write-ErrorSnapshot {
         today_tokens_display = '--'
         rate_limits_source = 'powershell-wrapper'
         today_token_source = 'powershell-wrapper'
+        reset_credits_status = 'error'
+        reset_credits_message = '采集失败'
+        reset_credits_available_count = $null
+        reset_credits = @()
+        reset_credits_tooltip = ''
     }
     $payload | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Path -Encoding UTF8
 }

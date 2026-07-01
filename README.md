@@ -8,7 +8,7 @@
 
 - `5h`: Codex 300 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
 - `周`: Codex 10080 分钟窗口剩余额度百分比，100% 为绿色，接近 0% 为红色。
-鼠标移动到 TrafficMonitor 上时，提示框只显示 5 小时/周剩余额度和重置时间。
+鼠标移动到 TrafficMonitor 上时，提示框显示 5 小时/周剩余额度和重置时间；如果本机能查到 Codex 额度重置卡，也会追加可用数量、获取时间和过期时间。
 
 双击任一显示项，或在插件命令里选择“立即刷新 Codex 用量”，会触发一次后台采集。
 
@@ -34,7 +34,7 @@
 
 采集 JSON 中为兼容旧版本仍可能保留本机 Token 估算字段，但插件界面不再显示该估算值。
 
-脚本不会读取 `auth.json`，也不会发起网络请求。
+为了显示 Codex 额度重置卡，采集脚本会读取 `%USERPROFILE%\.codex\auth.json` 中的 `tokens.access_token`，并用 `Authorization: Bearer ...` 请求 `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits`。状态 JSON 和 tooltip 只保留 `available_count` 以及每张卡的 `status`、`title`、本机时区下的获取时间和过期时间；不会写出 access token、refresh token、cookie 或完整唯一 ID。若 auth 缺失、401 或请求失败，则不显示重置卡区域。
 
 ## 构建
 

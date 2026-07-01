@@ -587,6 +587,7 @@ struct UsageSnapshot {
     std::wstring generated_at_local = L"--";
     std::wstring plan_type = L"--";
     std::wstring rate_source = L"--";
+    std::wstring reset_credits_tooltip;
     float five_hour_graph = 0.0f;
     float weekly_graph = 0.0f;
     std::wstring tooltip = L"Codex 用量：等待采集";
@@ -594,10 +595,13 @@ struct UsageSnapshot {
 
 std::wstring BuildTooltip(const UsageSnapshot& snapshot)
 {
-    return
+    std::wstring tooltip =
         FormatTooltipLine(L"5 小时剩余额度", snapshot.five_hour_display) +
         FormatTooltipLine(L"周剩余额度", snapshot.weekly_display) +
         FormatTooltipLine(L"重置", snapshot.reset_display);
+    if (!snapshot.reset_credits_tooltip.empty())
+        tooltip += snapshot.reset_credits_tooltip;
+    return tooltip;
 }
 
 class CodexUsagePlugin;
@@ -659,7 +663,7 @@ public:
         case TMI_DESCRIPTION: return L"显示 Codex 5 小时和周剩余额度，提示框显示重置时间";
         case TMI_AUTHOR: return L"Codex";
         case TMI_COPYRIGHT: return L"MIT; PluginInterface.h Copyright (C) by Zhong Yang";
-        case TMI_VERSION: return L"0.1.2";
+        case TMI_VERSION: return L"0.1.3";
         case TMI_URL: return L"https://github.com/zhongyang219/TrafficMonitor/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97";
         default: return L"";
         }
@@ -1048,7 +1052,12 @@ private:
              << "  \"reset_display\": \"" << JsonEscapeUtf8(reset_display) << "\",\n"
              << "  \"today_tokens_display\": \"--\",\n"
              << "  \"rate_limits_source\": \"plugin\",\n"
-             << "  \"today_token_source\": \"plugin\"\n"
+             << "  \"today_token_source\": \"plugin\",\n"
+             << "  \"reset_credits_status\": \"error\",\n"
+             << "  \"reset_credits_message\": \"plugin snapshot\",\n"
+             << "  \"reset_credits_available_count\": null,\n"
+             << "  \"reset_credits\": [],\n"
+             << "  \"reset_credits_tooltip\": \"\"\n"
              << "}\n";
         WriteUtf8File(StatusPath(), json.str());
     }
@@ -1168,6 +1177,7 @@ private:
         next.generated_at_local = ExtractJsonString(json, "generated_at_local", L"--");
         next.plan_type = ExtractJsonString(json, "plan_type", L"--");
         next.rate_source = ExtractJsonString(json, "rate_limits_source", L"--");
+        next.reset_credits_tooltip = ExtractJsonString(json, "reset_credits_tooltip", L"");
 
         if (auto value = RemainingPercentFromJson(json, "five_hour_remaining_percent", "five_hour_used_percent"))
             next.five_hour_graph = static_cast<float>(std::max(0.0, std::min(1.0, *value / 100.0)));

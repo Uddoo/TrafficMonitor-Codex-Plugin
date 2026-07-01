@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Collect a small Codex usage snapshot for the TrafficMonitor plugin.
-
-The script reads local Codex session/log databases only. It does not read
-auth.json and does not make network requests.
-"""
+"""Collect a small Codex usage snapshot for the TrafficMonitor plugin."""
 
 from __future__ import annotations
 
@@ -13,8 +9,10 @@ import os
 import re
 import sqlite3
 import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -22,6 +20,9 @@ from typing import Any, Iterable
 STALE_RATE_LIMIT_SECONDS = 6 * 60 * 60
 MAX_SESSION_JSONL_BYTES = 25 * 1024 * 1024
 MAX_SESSION_JSONL_FILES = 300
+RESET_CREDITS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+RESET_CREDITS_TIMEOUT_SECONDS = 6.0
+UNIQUE_ID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 @dataclass
@@ -31,8 +32,20 @@ class RateLimitEvent:
     payload: dict[str, Any]
 
 
+class ResetCreditsUnauthorizedError(Exception):
+    pass
+
+
+class ResetCreditsRequestError(Exception):
+    pass
+
+
 def local_now() -> datetime:
     return datetime.now().astimezone()
+
+
+def sanitize_unique_ids(value: str) -> str:
+    return UNIQUE_ID_RE.sub("<id>", value)
 
 
 def from_epoch(seconds: int | float | None) -> datetime | None:
@@ -61,6 +74,153 @@ def format_dt(dt: datetime | None) -> str:
     if dt.date() == now.date():
         return dt.strftime("%H:%M")
     return dt.strftime("%m-%d %H:%M")
+
+
+def default_reset_credits_snapshot(status: str = "not_found", message: str = "") -> dict[str, Any]:
+    return {
+        "reset_credits_status": status,
+        "reset_credits_message": message,
+        "reset_credits_available_count": None,
+        "reset_credits": [],
+        "reset_credits_tooltip": "",
+    }
+
+
+def read_codex_access_token(codex_home: Path) -> str | None:
+    auth_path = codex_home / "auth.json"
+    try:
+        payload = json.loads(auth_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    tokens = payload.get("tokens")
+    if not isinstance(tokens, dict):
+        return None
+    access_token = tokens.get("access_token")
+    if not isinstance(access_token, str) or not access_token.strip():
+        return None
+    return access_token
+
+
+def fetch_reset_credits_response(access_token: str, timeout_seconds: float = RESET_CREDITS_TIMEOUT_SECONDS) -> dict[str, Any]:
+    request = urllib.request.Request(
+        RESET_CREDITS_URL,
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": "TrafficMonitor-CodexUsage/0.1",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            body = response.read(1024 * 1024).decode(charset, errors="replace")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            raise ResetCreditsUnauthorizedError() from None
+        raise ResetCreditsRequestError(f"http_status:{exc.code}") from None
+    except (OSError, TimeoutError) as exc:
+        raise ResetCreditsRequestError(type(exc).__name__) from None
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ResetCreditsRequestError(type(exc).__name__) from None
+    if not isinstance(payload, dict):
+        raise ResetCreditsRequestError("unexpected_response")
+    return payload
+
+
+def local_datetime_from_utc_value(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+
+    seconds: float | None = None
+    if isinstance(value, int | float):
+        seconds = float(value)
+    elif isinstance(value, str) and re.fullmatch(r"\d+(\.\d+)?", value.strip()):
+        seconds = float(value.strip())
+
+    if seconds is not None:
+        if seconds > 100_000_000_000:
+            seconds /= 1000
+        try:
+            return datetime.fromtimestamp(seconds, tz=timezone.utc).astimezone()
+        except (OSError, OverflowError, ValueError):
+            return None
+
+    try:
+        text = str(value).strip()
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone()
+
+
+def format_reset_credit_dt(value: Any) -> str:
+    dt = local_datetime_from_utc_value(value)
+    if dt is None:
+        return "--"
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def normalize_reset_credit(credit: Any) -> dict[str, str] | None:
+    if not isinstance(credit, dict):
+        return None
+    return {
+        "status": str(credit.get("status") or "--"),
+        "title": str(credit.get("title") or "--"),
+        "granted_at": format_reset_credit_dt(credit.get("granted_at")),
+        "expires_at": format_reset_credit_dt(credit.get("expires_at")),
+    }
+
+
+def build_reset_credits_tooltip(available_count: int | None, credits: list[dict[str, str]]) -> str:
+    if available_count is None:
+        return ""
+
+    lines = [f"重置卡: {available_count} 张可用"]
+    for index, credit in enumerate(credits, start=1):
+        lines.append(f"  {index}. {credit['status']} | {credit['title']}")
+        lines.append(f"     获取 {credit['granted_at']}    过期 {credit['expires_at']}")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def collect_reset_credits(codex_home: Path) -> dict[str, Any]:
+    access_token = read_codex_access_token(codex_home)
+    if access_token is None:
+        return default_reset_credits_snapshot("missing_auth")
+
+    try:
+        payload = fetch_reset_credits_response(access_token, RESET_CREDITS_TIMEOUT_SECONDS)
+    except ResetCreditsUnauthorizedError:
+        return default_reset_credits_snapshot("unauthorized", "401: 凭证失效或未携带 Authorization header")
+    except ResetCreditsRequestError as exc:
+        return default_reset_credits_snapshot("error", str(exc))
+
+    raw_credits = payload.get("credits")
+    if not isinstance(raw_credits, list):
+        raw_credits = []
+    credits = [credit for credit in (normalize_reset_credit(item) for item in raw_credits) if credit is not None]
+
+    raw_available_count = payload.get("available_count")
+    available_count: int | None
+    try:
+        available_count = int(raw_available_count)
+    except (TypeError, ValueError):
+        available_count = len([credit for credit in credits if credit["status"] == "available"]) if credits else None
+
+    return {
+        "reset_credits_status": "ok",
+        "reset_credits_message": "正常",
+        "reset_credits_available_count": available_count,
+        "reset_credits": credits,
+        "reset_credits_tooltip": build_reset_credits_tooltip(available_count, credits),
+    }
 
 
 def format_dt_relative_to(dt: datetime | None, now: datetime) -> str:
@@ -429,6 +589,7 @@ def quota_percent_display(limit: dict[str, Any] | None, stale: bool, now: dateti
 def build_snapshot(codex_home: Path) -> dict[str, Any]:
     now = local_now()
     generated_at = now.isoformat(timespec="seconds")
+    reset_credits = collect_reset_credits(codex_home)
 
     tokens, token_source, token_count = find_today_tokens_from_logs(codex_home, now)
     if tokens is None:
@@ -454,7 +615,7 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
     else:
         payload = event.payload
         plan_type = str(payload.get("plan_type") or "--")
-        rate_source = event.source
+        rate_source = sanitize_unique_ids(event.source)
         rate_age_seconds = max(0, int(now.timestamp()) - event.ts)
         stale = rate_age_seconds > STALE_RATE_LIMIT_SECONDS
         if stale:
@@ -486,7 +647,7 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
         today_tokens_display = format_tokens(tokens)
 
     message = "；".join(messages) if messages else "正常"
-    return {
+    snapshot = {
         "schema_version": 1,
         "status": status,
         "message": message,
@@ -508,6 +669,8 @@ def build_snapshot(codex_home: Path) -> dict[str, Any]:
         "today_token_source": token_source,
         "today_token_rows": token_count,
     }
+    snapshot.update(reset_credits)
+    return snapshot
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -563,6 +726,11 @@ def main() -> int:
             "today_tokens_display": "--",
             "rate_limits_source": "error",
             "today_token_source": "error",
+            "reset_credits_status": "error",
+            "reset_credits_message": "采集失败",
+            "reset_credits_available_count": None,
+            "reset_credits": [],
+            "reset_credits_tooltip": "",
         }
     write_json_atomic(output, payload)
     return 0
